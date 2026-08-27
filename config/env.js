@@ -8,7 +8,7 @@ const env = {
   mongodbUri: process.env.MONGODB_URI || process.env.AUTH_MONGODB_URI || 'mongodb://127.0.0.1:27017/gabconcours',
   mongodbDbName: process.env.MONGODB_DB_NAME || 'gabconcours',
   jwtSecret: process.env.JWT_SECRET,
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:8001,http://localhost:5173,http://localhost:3000').split(',').map(v => v.trim()).filter(Boolean),
+  corsOrigins: [...new Set(`${process.env.CORS_ORIGINS || 'http://localhost:8001,http://localhost:5173,http://localhost:3000'},https://econcour.vercel.app`.split(',').map(v => v.trim()).filter(Boolean))],
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB || 10) * 1024 * 1024,
   storagePath: process.env.PRIVATE_STORAGE_PATH || path.join(__dirname, '..', 'storage', 'private'),
 };
