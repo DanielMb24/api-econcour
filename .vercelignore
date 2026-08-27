@@ -1,0 +1,14 @@
+node_modules
+.env
+.env.*
+!.env.example
+uploads
+migration-reports
+tests
+coverage
+*.log
+*.sql
+Dockerfile
+scripts/inspect-mysql-schema.js
+scripts/migrate-mysql-to-mongodb.js
+scripts/migrate-linked-mysql-to-mongodb.js

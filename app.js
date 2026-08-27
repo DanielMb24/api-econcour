@@ -31,4 +31,18 @@ function createApp() {
   app.use('/api/v1', require('./routes/v1'));
   app.use(notFound, errorHandler); return app;
 }
-module.exports = { createApp };
+const serverlessApp = createApp();
+let databaseConnection;
+async function handler(req, res) {
+  if (!databaseConnection) {
+    const { connectMongo } = require('./config/mongodb');
+    databaseConnection = connectMongo().catch(error => {
+      databaseConnection = undefined;
+      throw error;
+    });
+  }
+  await databaseConnection;
+  return serverlessApp(req, res);
+}
+module.exports = handler;
+module.exports.createApp = createApp;
