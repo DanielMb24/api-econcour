@@ -1,31 +1,18 @@
-# Express.js on Vercel
+# API eConcour
 
-Basic Express.js + Vercel example that serves html content, JSON data and simulates an api route.
+Backend Express/MongoDB de GabConcours, compatible avec Vercel Functions.
 
-## How to Use
+## Variables Vercel obligatoires
 
-You can choose from one of the following two methods to use this repository:
+- `NODE_ENV=production`
+- `DATABASE_DRIVER=mongodb`
+- `MONGODB_URI`
+- `MONGODB_DB_NAME=gabconcours`
+- `JWT_SECRET`
+- `CORS_ORIGINS` (URL exacte du frontend)
 
-### One-Click Deploy
+Pour l'envoi des identifiants, ajouter `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` et `FRONTEND_URL`.
 
-Deploy the example using [Vercel](https://vercel.com?utm_source=github&utm_medium=readme&utm_campaign=vercel-examples):
+Après déploiement, vérifier `GET /api/v1/health`.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/git/external?repository-url=https://github.com/vercel/examples/tree/main/solutions/express&project-name=express&repository-name=express)
-
-### Clone and Deploy
-
-```bash
-git clone https://github.com/vercel/examples/tree/main/solutions/express
-```
-
-Install the Vercel CLI:
-
-```bash
-npm i -g vercel
-```
-
-Then run the app at the root of the repository:
-
-```bash
-vercel dev
-```
+Les secrets ne doivent jamais être ajoutés au dépôt Git.
