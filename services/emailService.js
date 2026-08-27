@@ -1,14 +1,14 @@
 const nodemailer = require('nodemailer');
 
 // Configuration du transporteur email
-const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587);
 const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp.gmail.com',
     port: smtpPort,
     secure: smtpPort === 465,
     auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
+        user: process.env.SMTP_USER || process.env.EMAIL_USER,
+        pass: process.env.SMTP_PASS || process.env.EMAIL_PASSWORD
     }
 });
 
@@ -19,7 +19,7 @@ class EmailService {
             console.log('Envoi email identifiants admin:', adminData.email);
 
             const mailOptions = {
-                from: process.env.SMTP_USER || 'noreply@concours.ga',
+                from: process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.EMAIL_USER || 'noreply@concours.ga',
                 to: adminData.email,
                 subject: 'Vos identifiants administrateur - Plateforme Concours',
                 html: `

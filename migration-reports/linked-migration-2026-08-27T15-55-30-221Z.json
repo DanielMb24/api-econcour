@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-08-27T15:54:38.561Z",
+  "dryRun": false,
+  "source": "gabconcours",
+  "entities": {},
+  "orphans": [],
+  "duplicates": [],
+  "errors": [
+    {
+      "fatal": "querySrv ETIMEOUT _mongodb._tcp.cluster-dga-1.xylzvke.mongodb.net",
+      "code": "ETIMEOUT"
+    }
+  ],
+  "finishedAt": "2026-08-27T15:55:30.221Z"
+}

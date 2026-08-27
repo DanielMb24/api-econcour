@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
-const { Contest, Program, ProgramSubject, Application, ApplicationDocument, Payment, Message, Candidate, Establishment, Administrator, SupportRequest, Province, EducationLevel } = require('../models/mongo');
+const { Contest, Program, ProgramSubject, Application, ApplicationDocument, Payment, Message, Candidate, Establishment, Administrator, SupportRequest, Province, EducationLevel, Session } = require('../models/mongo');
 const { createApplication } = require('../services/applicationService');
 const emailService = require('../services/emailService');
 const { AppError, ok, asyncHandler } = require('../utils/api');
@@ -19,7 +19,26 @@ const candidatePhotoUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp)$/.test(file.mimetype))
 });
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 15 },
+  fileFilter: (_req, file, cb) => cb(null, /^(application\/pdf|image\/(jpeg|png|webp))$/.test(file.mimetype))
+});
 router.get('/health', asyncHandler(async (_req, res) => ok(res, { database: 'mongodb', status: 'ready' }, 'Service disponible')));
+router.get('/sessions', asyncHandler(async (_req, res) => ok(res, [], 'Sessions chargées')));
+router.post('/sessions', asyncHandler(async (req, res) => {
+  const nupcan = String(req.body?.nupcan || '').trim().toUpperCase();
+  const application = await Application.findOne({ nupcan }).select('candidateId').lean();
+  if (!application) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Candidature introuvable');
+  const token = crypto.randomBytes(32).toString('hex');
+  const session = await Session.create({
+    candidateId: application.candidateId,
+    actorType: 'candidate',
+    tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+  });
+  ok(res, { id: String(session._id), token, nupcan, expiresAt: session.expiresAt }, 'Session créée', 201);
+}));
 router.get('/contests', asyncHandler(async (req, res) => { const query = req.query.includeClosed === 'true' ? {} : { status: 'open' }; if (req.query.q) query.$text = { $search: String(req.query.q).slice(0, 100) }; ok(res, await Contest.find(query).populate('establishmentId educationLevelId').sort({ closesAt: -1 }).limit(Math.min(Number(req.query.limit) || 20, 100)).lean(), 'Concours disponibles'); }));
 router.get('/contests/:id', asyncHandler(async (req, res) => { const item = await Contest.findById(req.params.id).populate('programIds establishmentId').lean(); if (!item) throw new AppError(404, 'CONTEST_NOT_FOUND', 'Concours introuvable'); ok(res, item); }));
 const contestFilter = idFilter;
@@ -213,7 +232,29 @@ router.get('/candidats/nip/:nip',asyncHandler(async(req,res)=>{
   ok(res,{id:String(c._id),nupcan:application?.nupcan||'',nipcan:c.nipcan,concours_id:application?.contestId?.legacyId||String(application?.contestId?._id||''),filiere_id:application?.programId?.legacyId||String(application?.programId?._id||''),nomcan:c.lastName,prncan:c.firstName,maican:c.email||'',telcan:c.phone,dtncan:c.birthDate,ldncan:c.birthPlace||'',phtcan:c.photoData||null,proorg:c.originProvinceId,proact:c.currentProvinceId,proaff:c.assignedProvinceId,statut:application?.status||'',created_at:c.createdAt,updated_at:c.updatedAt},'Candidat chargé');
 }));
 router.get('/candidats/nupcan/:nupcan',authenticate,asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).populate('candidateId').populate('contestId').populate('programId').lean();if(!application)throw new AppError(404,'CANDIDATE_NOT_FOUND','Candidat introuvable');const c=application.candidateId;ok(res,{id:String(c._id),nupcan:application.nupcan,nipcan:c.nipcan||'',concours_id:application.contestId?.legacyId||String(application.contestId?._id),filiere_id:application.programId?.legacyId||String(application.programId?._id),nomcan:c.lastName,prncan:c.firstName,maican:c.email||'',telcan:c.phone,dtncan:c.birthDate,ldncan:c.birthPlace||'',phtcan:c.photoData||null,proorg:c.originProvinceId,proact:c.currentProvinceId,proaff:c.assignedProvinceId,statut:application.status,created_at:c.createdAt,updated_at:c.updatedAt},'Candidat chargé');}));
-router.get('/dossiers/nupcan/:nupcan',authenticate,asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const docs=await ApplicationDocument.find({applicationId:application._id}).sort({createdAt:-1}).lean();ok(res,docs.map(d=>({id:String(d._id),document_id:String(d._id),nomdoc:d.type,nom_fichier:d.originalName||d.safeName,chemin_fichier:d.storageKey,type:d.type,taille:d.size,statut:{approved:'valide',rejected:'rejete',under_review:'en_attente',uploaded:'en_attente',pending:'en_attente'}[d.status]||d.status,commentaire_validation:d.rejectionReason||'',created_at:d.createdAt,updated_at:d.updatedAt})),'Documents chargés');}));
+router.get('/candidats/nupcan/:nupcan/nipcan', asyncHandler(async (req, res) => { const application = await Application.findOne({ nupcan: String(req.params.nupcan).toUpperCase() }).populate('candidateId').lean(); if (!application?.candidateId?.nipcan) throw new AppError(404, 'CANDIDATE_NOT_FOUND', 'NIPCAN introuvable pour cette candidature'); ok(res, { nipcan: application.candidateId.nipcan, nupcan: application.nupcan }, 'NIPCAN trouvé'); }));
+const documentView = d => ({ id: String(d._id), document_id: String(d._id), nomdoc: d.type, nom_fichier: d.originalName || d.safeName, chemin_fichier: d.storageKey, type: d.type, taille: d.size, statut: { approved: 'valide', rejected: 'rejete', under_review: 'en_attente', uploaded: 'en_attente', pending: 'en_attente' }[d.status] || d.status, commentaire_validation: d.rejectionReason || '', created_at: d.createdAt, updated_at: d.updatedAt });
+router.get('/dossiers/nupcan/:nupcan', asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const docs=await ApplicationDocument.find({applicationId:application._id}).sort({createdAt:-1}).lean();ok(res,docs.map(documentView),'Documents chargés');}));
+router.post('/dossiers', documentUpload.array('documents', 15), asyncHandler(async (req, res) => {
+  const nupcan = String(req.body?.nupcan || '').trim().toUpperCase();
+  const application = await Application.findOne({ nupcan }).lean();
+  if (!application) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Candidature introuvable');
+  if (!req.files?.length) throw new AppError(422, 'DOCUMENTS_REQUIRED', 'Au moins un document est requis');
+  const documents = await ApplicationDocument.insertMany(req.files.map(file => ({
+    applicationId: application._id,
+    candidateId: application.candidateId,
+    type: file.originalname,
+    storageKey: `documents/${nupcan}/${crypto.randomUUID()}`,
+    contentData: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+    originalName: file.originalname,
+    safeName: file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_'),
+    mimeType: file.mimetype,
+    size: file.size,
+    checksum: crypto.createHash('sha256').update(file.buffer).digest('hex'),
+    status: 'uploaded'
+  })));
+  ok(res, documents.map(documentView), 'Documents chargés', 201);
+}));
 router.get('/paiements/nupcan/:nupcan',authenticate,asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const p=await Payment.findOne({applicationId:application._id}).sort({createdAt:-1}).lean();if(!p)return ok(res,null,'Aucun paiement');ok(res,{id:String(p._id),reference_paiement:p.paymentReference,montant:p.amount,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,created_at:p.createdAt},'Paiement chargé');}));
 router.get('/paiements',authenticate,asyncHandler(async(_req,res)=>{const items=await Payment.find().populate('candidateId').populate({path:'applicationId',populate:[{path:'contestId'},{path:'programId'}]}).sort({createdAt:-1}).lean();ok(res,items.map(p=>({id:String(p._id),legacyId:p.legacyId,candidat_nom:p.candidateId?`${p.candidateId.firstName} ${p.candidateId.lastName}`.trim():'',candidat_email:p.candidateId?.email||'',nupcan:p.applicationId?.nupcan||'',concours:p.applicationId?.contestId?.title||'',filiere:p.applicationId?.programId?.name||'',reference:p.paymentReference,transaction_id:p.transactionId,montant:p.amount,devise:p.currency,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,date_paiement:p.createdAt,created_at:p.createdAt})),'Paiements complets chargés');}));
 router.patch('/paiements/:id/status',authenticate,asyncHandler(async(req,res)=>{const status={valide:'paid',rejete:'failed',en_attente:'pending'}[req.body.statut]||req.body.status;if(!['paid','failed','pending','processing','cancelled','refunded'].includes(status))throw new AppError(422,'INVALID_PAYMENT_STATUS','Statut de paiement invalide');const item=await Payment.findByIdAndUpdate(req.params.id,{$set:{status}},{new:true,runValidators:true});if(!item)throw new AppError(404,'PAYMENT_NOT_FOUND','Paiement introuvable');ok(res,{id:String(item._id),statut:item.status},'Statut du paiement modifié');}));

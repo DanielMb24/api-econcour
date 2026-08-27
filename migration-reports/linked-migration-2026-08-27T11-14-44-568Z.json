@@ -1,0 +1,140 @@
+{
+  "startedAt": "2026-08-27T11:14:28.971Z",
+  "dryRun": false,
+  "source": "gabconcours",
+  "entities": {
+    "provinces": {
+      "source": 9,
+      "migrated": 9,
+      "skipped": 0,
+      "errors": 0
+    },
+    "niveaux": {
+      "source": 10,
+      "migrated": 10,
+      "skipped": 0,
+      "errors": 0
+    },
+    "etablissements": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "matieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours_filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filiere_matieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "administrateurs": {
+      "source": 2,
+      "migrated": 2,
+      "skipped": 0,
+      "errors": 0
+    },
+    "candidats": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "participations": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "documents": {
+      "source": 1,
+      "migrated": 0,
+      "skipped": 1,
+      "errors": 0
+    },
+    "paiements": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notes": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notifications": {
+      "source": 26,
+      "migrated": 2,
+      "skipped": 24,
+      "errors": 0
+    },
+    "messages": {
+      "source": 1,
+      "migrated": 0,
+      "skipped": 1,
+      "errors": 0
+    },
+    "admin_logs": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "admin_actions": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "support_requests": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    }
+  },
+  "orphans": [
+    {
+      "source": "notifications",
+      "id": 18,
+      "field": "candidat_id",
+      "legacyId": 6,
+      "target": "Candidate"
+    },
+    {
+      "source": "messages",
+      "id": 1,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Application"
+    }
+  ],
+  "duplicates": [],
+  "errors": [],
+  "finishedAt": "2026-08-27T11:14:44.568Z"
+}

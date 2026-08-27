@@ -1,0 +1,14 @@
+{
+  "startedAt": "2026-08-27T10:46:05.816Z",
+  "dryRun": true,
+  "batchSize": 250,
+  "entities": {},
+  "missingReferences": [],
+  "duplicates": [],
+  "errors": [
+    {
+      "fatal": ""
+    }
+  ],
+  "finishedAt": "2026-08-27T10:46:05.907Z"
+}

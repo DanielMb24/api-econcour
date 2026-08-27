@@ -1,0 +1,333 @@
+{
+  "startedAt": "2026-08-27T11:18:53.852Z",
+  "dryRun": false,
+  "source": "gabconcours",
+  "entities": {
+    "provinces": {
+      "source": 9,
+      "migrated": 9,
+      "skipped": 0,
+      "errors": 0
+    },
+    "niveaux": {
+      "source": 10,
+      "migrated": 10,
+      "skipped": 0,
+      "errors": 0
+    },
+    "etablissements": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "matieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours_filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filiere_matieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "administrateurs": {
+      "source": 2,
+      "migrated": 2,
+      "skipped": 0,
+      "errors": 0
+    },
+    "candidats": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "participations": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "documents": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "paiements": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notes": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notifications": {
+      "source": 26,
+      "migrated": 26,
+      "skipped": 0,
+      "errors": 0
+    },
+    "messages": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "admin_logs": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "admin_actions": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "support_requests": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    }
+  },
+  "orphans": [
+    {
+      "source": "notifications",
+      "id": 1,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 2,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 3,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 4,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 5,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 6,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 7,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 8,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 9,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 10,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 11,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 12,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 13,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 14,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 15,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 18,
+      "field": "candidat_id",
+      "legacyId": 6,
+      "target": "Candidate"
+    },
+    {
+      "source": "notifications",
+      "id": 18,
+      "field": "candidat_nupcan",
+      "legacyId": "",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 20,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 21,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 22,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 23,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 24,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 25,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 26,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 27,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "messages",
+      "id": 1,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Application",
+      "preserved": true
+    }
+  ],
+  "duplicates": [],
+  "errors": [],
+  "finishedAt": "2026-08-27T11:19:20.302Z"
+}

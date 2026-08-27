@@ -1,0 +1,358 @@
+{
+  "startedAt": "2026-08-27T15:55:51.169Z",
+  "dryRun": false,
+  "source": "gabconcours",
+  "entities": {
+    "provinces": {
+      "source": 9,
+      "migrated": 9,
+      "skipped": 0,
+      "errors": 0
+    },
+    "niveaux": {
+      "source": 10,
+      "migrated": 10,
+      "skipped": 0,
+      "errors": 0
+    },
+    "etablissements": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "matieres": {
+      "source": 2,
+      "migrated": 2,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours": {
+      "source": 2,
+      "migrated": 2,
+      "skipped": 0,
+      "errors": 0
+    },
+    "concours_filieres": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "filiere_matieres": {
+      "source": 2,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 1
+    },
+    "administrateurs": {
+      "source": 2,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 1
+    },
+    "candidats": {
+      "source": 6,
+      "migrated": 6,
+      "skipped": 0,
+      "errors": 0
+    },
+    "participations": {
+      "source": 6,
+      "migrated": 6,
+      "skipped": 0,
+      "errors": 0
+    },
+    "documents": {
+      "source": 5,
+      "migrated": 5,
+      "skipped": 0,
+      "errors": 0
+    },
+    "paiements": {
+      "source": 21,
+      "migrated": 21,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notes": {
+      "source": 5,
+      "migrated": 5,
+      "skipped": 0,
+      "errors": 0
+    },
+    "notifications": {
+      "source": 38,
+      "migrated": 38,
+      "skipped": 0,
+      "errors": 0
+    },
+    "messages": {
+      "source": 3,
+      "migrated": 3,
+      "skipped": 0,
+      "errors": 0
+    },
+    "admin_logs": {
+      "source": 0,
+      "migrated": 0,
+      "skipped": 0,
+      "errors": 0
+    },
+    "admin_actions": {
+      "source": 8,
+      "migrated": 8,
+      "skipped": 0,
+      "errors": 0
+    },
+    "support_requests": {
+      "source": 1,
+      "migrated": 1,
+      "skipped": 0,
+      "errors": 0
+    },
+    "sessions": {
+      "source": 15,
+      "migrated": 12,
+      "skipped": 3,
+      "errors": 0
+    }
+  },
+  "orphans": [
+    {
+      "source": "notifications",
+      "id": 1,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 2,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 3,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 4,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 5,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 6,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 7,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 8,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 9,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 10,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 11,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 12,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 13,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 14,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 15,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 20,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 21,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 22,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 23,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 24,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 25,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 26,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "notifications",
+      "id": 27,
+      "field": "candidat_nupcan",
+      "legacyId": "20260613-1",
+      "target": "Candidate/Application",
+      "preserved": true
+    },
+    {
+      "source": "messages",
+      "id": 1,
+      "field": "candidat_nupcan",
+      "legacyId": "20251107-1",
+      "target": "Application",
+      "preserved": true
+    },
+    {
+      "source": "sessions",
+      "id": 7,
+      "field": "candidat_id",
+      "legacyId": 9,
+      "target": "Candidate"
+    },
+    {
+      "source": "sessions",
+      "id": 8,
+      "field": "candidat_id",
+      "legacyId": 10,
+      "target": "Candidate"
+    },
+    {
+      "source": "sessions",
+      "id": 9,
+      "field": "candidat_id",
+      "legacyId": 11,
+      "target": "Candidate"
+    }
+  ],
+  "duplicates": [],
+  "errors": [
+    {
+      "table": "filiere_matieres",
+      "id": 2,
+      "message": "E11000 duplicate key error collection: gabconcours.programsubjects index: programId_1_subjectId_1_contestId_1 dup key: { programId: ObjectId('6a901c1f185b006230827abb'), subjectId: ObjectId('6a901c20185b006230827abc'), contestId: null }",
+      "code": 11000
+    },
+    {
+      "table": "administrateurs",
+      "id": 11,
+      "message": "E11000 duplicate key error collection: gabconcours.administrators index: email_1 dup key: { email: \"mb.daniel241@gmail.com\" }",
+      "code": 11000
+    }
+  ],
+  "finishedAt": "2026-08-27T15:57:09.054Z"
+}
