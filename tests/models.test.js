@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Application, Payment } = require('../models/mongo');
+const { Candidate, Application, Payment } = require('../models/mongo');
+test('NIPCAN identifie un candidat de manière unique', () => { const index=Candidate.schema.indexes().find(([keys])=>keys.nipcan===1); assert.equal(index[1].unique,true); });
 test('NUPCAN possède un index unique', () => { const index=Application.schema.indexes().find(([keys])=>keys.nupcan===1); assert.equal(index[1].unique,true); });
 test('une candidature est unique par candidat et concours', () => { const index=Application.schema.indexes().find(([keys])=>keys.candidateId===1&&keys.contestId===1); assert.equal(index[1].unique,true); });
 test('les références de paiement sont idempotentes', () => { for(const field of ['paymentReference','transactionId']) { const index=Payment.schema.indexes().find(([keys])=>keys[field]===1); assert.equal(index[1].unique,true); } });

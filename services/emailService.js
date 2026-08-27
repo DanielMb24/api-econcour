@@ -152,7 +152,7 @@ class EmailService {
                 </div>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="${process.env.APP_URL || 'http://localhost:8080'}/connexion" 
+                    <a href="${process.env.FRONTEND_URL || process.env.APP_URL || 'http://localhost:8001'}/connexion" 
                        style="background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
                         🔐 Se connecter avec mon NIPCAN
                     </a>

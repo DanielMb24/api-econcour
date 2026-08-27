@@ -1,30 +1,61 @@
 {
-  "name": "api-econcour",
+  "name": "gabconcours-backend",
   "version": "1.0.0",
-  "private": true,
-  "description": "API MongoDB de la plateforme GabConcours",
-  "main": "server-mongodb.js",
+  "description": "Backend API pour la plateforme de concours gabonaise",
+  "main": "server.js",
   "type": "commonjs",
-  "engines": {
-    "node": ">=20"
-  },
   "scripts": {
     "start": "node server-mongodb.js",
-    "dev": "node --watch server-mongodb.js",
+    "dev": "nodemon server-mongodb.js",
+    "init-db": "node scripts/initialize-mongodb.js",
+    "verify-db": "node scripts/verify-mongodb.js",
+    "verify:migration": "node scripts/verify-migration-relations.js",
+    "admin:create-super": "node scripts/create-super-admin-mongodb.js",
+    "inspect:mysql": "node scripts/inspect-mysql-schema.js",
+    "inspect:mysql:summary": "node scripts/inspect-mysql-schema.js --summary",
+    "migrate:dry-run": "node scripts/migrate-linked-mysql-to-mongodb.js --dry-run",
+    "migrate": "node scripts/migrate-linked-mysql-to-mongodb.js",
     "test": "node --test tests/**/*.test.js",
-    "typecheck": "node --check app.js && node --check api/index.js && node --check routes/v1.js"
+    "typecheck": "node --check app.js && node --check server-mongodb.js",
+    "lint": "node scripts/lint.js"
   },
   "dependencies": {
+    "@types/pdf-parse": "^1.1.5",
+    "axios": "^1.12.2",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
+    "body-parser": "^2.2.0",
+    "commonjs": "^0.0.1",
+    "config": "^4.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
+    "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.1",
+    "file-type": "^19.6.0",
     "helmet": "^8.1.0",
+    "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
+    "jspdf": "^3.0.1",
+    "mailer": "^0.6.7",
+    "middleware": "^1.0.0",
     "mongoose": "^8.18.0",
     "multer": "^2.2.0",
-    "nodemailer": "^9.0.6"
+    "mysql2": "^3.15.2",
+    "nodemailer": "^7.0.5",
+    "pdf-parse": "^2.3.10",
+    "pdfkit": "^0.15.2",
+    "pg": "^8.16.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.37.7",
+    "tesseract.js": "^6.0.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/multer": "^2.0.0",
+    "@types/node": "^24.7.2",
+    "nodemon": "^3.1.10"
   }
 }
