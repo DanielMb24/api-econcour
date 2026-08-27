@@ -11,6 +11,9 @@ function createApp() {
   app.use(cors({ origin(origin, cb) { if (!origin || env.corsOrigins.includes(origin)) return cb(null, true); cb(new Error('Origine CORS refusée')); }, credentials: true }));
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false }));
   app.use(express.json({ limit: '1mb' }), express.urlencoded({ extended: false, limit: '1mb' }), cookieParser());
+  const serviceInfo = (_req, res) => res.status(200).json({ success: true, data: { service: 'api-econcour', version: 'v1', health: '/api/v1/health' }, message: 'GabConcours API disponible', errors: [] });
+  app.get('/', serviceInfo);
+  app.get('/api', serviceInfo);
   app.use('/api/v1', require('./routes/v1'));
   app.use(notFound, errorHandler); return app;
 }
