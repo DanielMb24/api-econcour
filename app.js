@@ -8,10 +8,15 @@ const { correlation, notFound, errorHandler } = require('./utils/api');
 function createApp() {
   const app = express(); app.disable('x-powered-by'); app.set('trust proxy', 1);
   app.use(correlation, helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+  const allowedCorsOrigins = new Set([
+    ...env.corsOrigins,
+    'https://econcour.vercel.app',
+    'https://gabonconcours.vercel.app',
+  ]);
   const corsOptions = {
     origin(origin, cb) {
       const normalizedOrigin = origin?.replace(/\/$/, '');
-      if (!normalizedOrigin || env.corsOrigins.includes(normalizedOrigin)) return cb(null, true);
+      if (!normalizedOrigin || allowedCorsOrigins.has(normalizedOrigin)) return cb(null, true);
       cb(new Error('Origine CORS refusée'));
     },
     credentials: true,
