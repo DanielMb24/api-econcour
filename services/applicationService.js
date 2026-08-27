@@ -11,7 +11,7 @@ async function createApplication(input) {
   if (contest.status !== 'open') throw new AppError(409, 'CONTEST_NOT_OPEN', "Ce concours n'accepte pas de candidature");
   const candidate = await Candidate.create(input.candidate);
   try {
-    return await Application.create({ candidateId: candidate._id, contestId: contest._id, programId: program._id, nupcan: await nextNupcan(), completedSteps: ['candidate'], contestSnapshot: { title: contest.title, fee: contest.fee, currency: contest.currency, programName: program.name }, statusHistory: [{ status: 'draft' }] });
+    return await Application.create({ candidateId: candidate._id, contestId: contest._id, programId: program._id, legacyNipcan: input.legacyNipcan || undefined, nupcan: await nextNupcan(), completedSteps: ['candidate'], contestSnapshot: { title: contest.title, fee: contest.fee, currency: contest.currency, programName: program.name }, statusHistory: [{ status: 'draft' }] });
   } catch (error) { if (error.code === 11000) await Candidate.deleteOne({ _id: candidate._id }); throw error; }
 }
 module.exports = { nextNupcan, createApplication };
