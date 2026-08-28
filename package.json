@@ -10,6 +10,7 @@
     "init-db": "node scripts/initialize-mongodb.js",
     "verify-db": "node scripts/verify-mongodb.js",
     "verify:migration": "node scripts/verify-migration-relations.js",
+    "migrate:admin-roles": "node scripts/migrate-admin-roles.js",
     "admin:create-super": "node scripts/create-super-admin-mongodb.js",
     "inspect:mysql": "node scripts/inspect-mysql-schema.js",
     "inspect:mysql:summary": "node scripts/inspect-mysql-schema.js --summary",

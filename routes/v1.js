@@ -12,6 +12,21 @@ const { authenticate, scopeEstablishment } = require('../middleware/mongoAuth');
 const router = express.Router();
 const required = (...paths) => (req, _res, next) => { const missing = paths.filter(path => path.split('.').reduce((v,k) => v?.[k], req.body) == null); missing.length ? next(new AppError(422, 'VALIDATION_ERROR', 'Données invalides', missing.map(field => ({ field, message: 'Champ obligatoire' })))) : next(); };
 const requireSuperAdmin=(req,_res,next)=>req.admin?.role==='super_admin'?next():next(new AppError(403,'SUPER_ADMIN_REQUIRED','Accès réservé au super-administrateur'));
+const defaultPermissionsByRole = {
+  admin: ['view_applications', 'manage_applications', 'view_documents', 'validate_documents', 'enter_grades', 'validate_grades', 'view_payments', 'manage_payments', 'view_reports', 'manage_messages', 'manage_subadmins'],
+  admin_etablissement: ['view_applications', 'manage_applications', 'view_documents', 'validate_documents', 'enter_grades', 'validate_grades', 'view_payments', 'manage_payments', 'view_reports', 'manage_messages', 'manage_subadmins'],
+  reviewer: ['view_applications', 'view_documents', 'validate_documents', 'enter_grades', 'validate_grades', 'view_payments', 'view_reports', 'manage_messages', 'manage_subadmins'],
+  finance: ['view_payments']
+};
+const effectivePermissions = admin => admin.permissions?.length ? admin.permissions : (defaultPermissionsByRole[admin.role] || []);
+const requirePermission = permission => (req, _res, next) => {
+  if (req.admin?.role === 'super_admin' || effectivePermissions(req.admin).includes(permission)) return next();
+  next(new AppError(403, 'PERMISSION_FORBIDDEN', 'Permission insuffisante'));
+};
+const rolePermissions = {
+  applications_manager: ['view_applications', 'manage_applications'], documents_validator: ['view_documents', 'validate_documents'], documents_viewer: ['view_documents'],
+  grades_entry: ['view_applications', 'enter_grades'], grades_validator: ['view_applications', 'validate_grades'], payments_viewer: ['view_payments'], reports_viewer: ['view_reports'], messaging_agent: ['manage_messages']
+};
 const isObjectId = value => typeof value === 'string' && /^[a-f\d]{24}$/i.test(value.trim());
 const idFilter = value => isObjectId(value) ? { _id: value.trim() } : { legacyId: Number(value) };
 const candidatePhotoUpload = multer({
@@ -146,7 +161,7 @@ router.post('/admin/auth/login', required('email','password'), asyncHandler(asyn
   await Administrator.updateOne({_id:admin._id},{$set:{lastLoginAt:new Date()}});
   res.cookie('admin_session',token,{httpOnly:true,secure:env.nodeEnv==='production',sameSite:'lax',maxAge:24*60*60*1000,path:'/'});
   const establishment=admin.establishmentIds?.[0];
-  ok(res,{token,admin:{id:String(admin._id),legacyId:admin.legacyId,nom:admin.lastName,prenom:admin.firstName,email:admin.email,role:admin.role,admin_role:admin.role==='finance'?'paiements':'documents',etablissement_id:establishment?.legacyId,etablissement_object_id:establishment?._id,etablissement_nom:establishment?.name}},'Connexion réussie');
+  ok(res,{token,admin:{id:String(admin._id),legacyId:admin.legacyId,nom:admin.lastName,prenom:admin.firstName,email:admin.email,role:admin.role,admin_role:admin.subAdminRole||(admin.role==='finance'?'paiements':'documents'),subAdminRole:admin.subAdminRole,permissions:effectivePermissions(admin),etablissement_id:establishment?.legacyId,etablissement_object_id:establishment?._id,etablissement_nom:establishment?.name}},'Connexion réussie');
 }));
 router.post('/admin/auth/logout',(_req,res)=>{res.clearCookie('admin_session',{path:'/'});ok(res,null,'Déconnexion réussie')});
 router.get('/statistics',asyncHandler(async(_req,res)=>{
@@ -178,8 +193,40 @@ router.get('/admin/concours/:contestId/candidats', authenticate, asyncHandler(as
     };
   }), 'Candidatures du concours chargées');
 }));
+const subAdminView = admin => ({ ...adminView(admin), role: 'sub_admin', admin_role: admin.subAdminRole, permissions: admin.permissions || [], created_by: admin.createdBy });
+const requireSubAdminManager = (req, _res, next) => {
+  if (req.admin?.role === 'super_admin' || ['admin_etablissement', 'reviewer', 'admin'].includes(req.admin?.role)) return next();
+  next(new AppError(403, 'SUBADMIN_MANAGEMENT_FORBIDDEN', 'Seul un administrateur d’établissement peut gérer les sous-administrateurs'));
+};
+router.get('/subadmins', authenticate, requireSubAdminManager, asyncHandler(async (req, res) => {
+  const establishmentId = req.admin.role === 'super_admin' ? req.query.etablissement_id : req.admin.establishmentIds?.[0];
+  const filter = { role: 'sub_admin', active: true };
+  if (establishmentId) filter.establishmentIds = establishmentId;
+  ok(res, (await Administrator.find(filter).populate('establishmentIds').sort({ createdAt: -1 }).lean()).map(subAdminView), 'Sous-administrateurs chargés');
+}));
+router.post('/subadmins', authenticate, requireSubAdminManager, asyncHandler(async (req, res) => {
+  const role = String(req.body.admin_role || req.body.subAdminRole || '');
+  if (!rolePermissions[role]) throw new AppError(422, 'INVALID_SUBADMIN_ROLE', 'Rôle de sous-administrateur invalide');
+  const establishmentId = req.admin.role === 'super_admin' ? req.body.etablissement_id : req.admin.establishmentIds?.[0];
+  if (!establishmentId) throw new AppError(422, 'ESTABLISHMENT_REQUIRED', 'Établissement obligatoire');
+  const establishment = await Establishment.findOne(idFilter(establishmentId)).select('_id').lean();
+  if (!establishment) throw new AppError(422, 'INVALID_ESTABLISHMENT', 'Établissement introuvable');
+  const temporaryPassword = String(req.body.password || crypto.randomBytes(12).toString('base64url'));
+  const admin = await Administrator.create({ firstName: String(req.body.prenom || '').trim(), lastName: String(req.body.nom || '').trim(), email: String(req.body.email || '').trim().toLowerCase(), passwordHash: await bcrypt.hash(temporaryPassword, 12), role: 'sub_admin', subAdminRole: role, permissions: rolePermissions[role], establishmentIds: [establishment._id], createdBy: req.admin._id, active: true });
+  const populated = await Administrator.findById(admin._id).populate('establishmentIds').lean();
+  let emailSent = false;
+  try { await emailService.sendAdminCredentials({ email: populated.email, prenom: populated.firstName, nom: populated.lastName, temp_password: temporaryPassword, etablissement_nom: populated.establishmentIds?.[0]?.name }); emailSent = true; } catch (error) { console.error(JSON.stringify({ level: 'error', code: 'SUBADMIN_CREDENTIALS_EMAIL_FAILED', message: error.message })); }
+  ok(res, { ...subAdminView(populated), delivery: { emailSent, ...(!emailSent && { temporaryPassword }) } }, emailSent ? 'Sous-administrateur créé et identifiants envoyés' : "Sous-administrateur créé, mais l'email n'a pas pu être envoyé", 201);
+}));
+router.delete('/subadmins/:id', authenticate, requireSubAdminManager, asyncHandler(async (req, res) => {
+  const filter = { ...idFilter(req.params.id), role: 'sub_admin' };
+  if (req.admin.role !== 'super_admin') filter.establishmentIds = req.admin.establishmentIds?.[0];
+  const admin = await Administrator.findOneAndUpdate(filter, { $set: { active: false } }, { new: true }).lean();
+  if (!admin) throw new AppError(404, 'SUBADMIN_NOT_FOUND', 'Sous-administrateur introuvable');
+  ok(res, { id: String(admin._id) }, 'Sous-administrateur désactivé');
+}));
 router.get('/messages/admin',authenticate,asyncHandler(async(req,res)=>{const query={};if(req.query.nupcan)query.legacyNupcan=String(req.query.nupcan);const items=await Message.find(query).populate('candidateId administratorId applicationId').sort({createdAt:-1}).limit(200).lean();ok(res,items.map(m=>({id:String(m._id),legacyId:m.legacyId,candidat_nupcan:m.applicationId?.nupcan||m.legacyNupcan||'',admin_id:m.administratorId?.legacyId,sujet:m.subject||'',message:m.body,expediteur:m.senderType==='administrator'?'admin':'candidat',statut:m.readAt?'lu':'non_lu',created_at:m.createdAt,updated_at:m.updatedAt,nomcan:m.candidateId?.lastName||'',prncan:m.candidateId?.firstName||'',maican:m.candidateId?.email||'',admin_nom:m.administratorId?.lastName||'',admin_prenom:m.administratorId?.firstName||''})),'Messages chargés');}));
-const adminView=a=>({id:String(a._id),legacyId:a.legacyId,nom:a.lastName,prenom:a.firstName,email:a.email,role:a.role,admin_role:a.role==='finance'?'paiements':'documents',etablissement_id:a.establishmentIds?.[0]?.legacyId,etablissement_object_id:a.establishmentIds?.[0]?._id,etablissement_nom:a.establishmentIds?.[0]?.name||'',statut:a.active?'actif':'inactif',active:a.active,derniere_connexion:a.lastLoginAt,created_at:a.createdAt});
+const adminView=a=>({id:String(a._id),legacyId:a.legacyId,nom:a.lastName,prenom:a.firstName,email:a.email,role:a.role,admin_role:a.subAdminRole||(a.role==='finance'?'paiements':'documents'),subAdminRole:a.subAdminRole,permissions:effectivePermissions(a),etablissement_id:a.establishmentIds?.[0]?.legacyId,etablissement_object_id:a.establishmentIds?.[0]?._id,etablissement_nom:a.establishmentIds?.[0]?.name||'',statut:a.active?'actif':'inactif',active:a.active,derniere_connexion:a.lastLoginAt,created_at:a.createdAt});
 router.get('/admin/management/admins',authenticate,requireSuperAdmin,asyncHandler(async(_req,res)=>ok(res,(await Administrator.find().populate('establishmentIds').sort({createdAt:-1}).lean()).map(adminView),'Administrateurs chargés')));
 router.post('/admin/management/admins',authenticate,requireSuperAdmin,required('email'),asyncHandler(async(req,res)=>{
   const establishmentId=req.body.etablissement_id?await Establishment.findOne(establishmentFilter(req.body.etablissement_id)).select('_id').lean():null;
@@ -350,8 +397,8 @@ router.get('/messages/candidat/:nupcan', asyncHandler(async(req,res)=>{const app
 router.post('/messages/candidat', required('nupcan','message'), asyncHandler(async(req,res)=>{const application=await applicationByNupcan(req.body.nupcan);if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const item=await Message.create({applicationId:application._id,candidateId:application.candidateId,legacyNupcan:application.nupcan,subject:String(req.body.sujet||'Sans objet').trim(),body:String(req.body.message).trim(),senderType:'candidate'});ok(res,messageView(item),'Message envoyé',201);}));
 router.get('/grades/candidat/:nupcan', asyncHandler(async(req,res)=>{const application=await applicationByNupcan(req.params.nupcan);if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const grades=await Grade.find({applicationId:application._id}).populate('subjectId').lean();const notes=grades.map(grade=>({id:String(grade._id),note:grade.score,nommat:grade.subjectId?.name||'',coefmat:grade.coefficient||1}));const coefficientTotal=notes.reduce((sum,note)=>sum+note.coefmat,0);const moyenneGenerale=coefficientTotal?Number((notes.reduce((sum,note)=>sum+note.note*note.coefmat,0)/coefficientTotal).toFixed(2)):null;ok(res,{notes,moyenneGenerale},'Notes chargées');}));
 router.get('/paiements/nupcan/:nupcan',authenticate,asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const p=await Payment.findOne({applicationId:application._id}).sort({createdAt:-1}).lean();if(!p)return ok(res,null,'Aucun paiement');ok(res,{id:String(p._id),reference_paiement:p.paymentReference,montant:p.amount,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,created_at:p.createdAt},'Paiement chargé');}));
-router.get('/paiements',authenticate,asyncHandler(async(_req,res)=>{const items=await Payment.find().populate('candidateId').populate({path:'applicationId',populate:[{path:'contestId'},{path:'programId'}]}).sort({createdAt:-1}).lean();ok(res,items.map(p=>({id:String(p._id),legacyId:p.legacyId,candidat_nom:p.candidateId?`${p.candidateId.firstName} ${p.candidateId.lastName}`.trim():'',candidat_email:p.candidateId?.email||'',nupcan:p.applicationId?.nupcan||'',concours:p.applicationId?.contestId?.title||'',filiere:p.applicationId?.programId?.name||'',reference:p.paymentReference,transaction_id:p.transactionId,montant:p.amount,devise:p.currency,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,date_paiement:p.createdAt,created_at:p.createdAt})),'Paiements complets chargés');}));
-router.patch('/paiements/:id/status',authenticate,asyncHandler(async(req,res)=>{const status={valide:'paid',rejete:'failed',en_attente:'pending'}[req.body.statut]||req.body.status;if(!['paid','failed','pending','processing','cancelled','refunded'].includes(status))throw new AppError(422,'INVALID_PAYMENT_STATUS','Statut de paiement invalide');const item=await Payment.findByIdAndUpdate(req.params.id,{$set:{status}},{new:true,runValidators:true});if(!item)throw new AppError(404,'PAYMENT_NOT_FOUND','Paiement introuvable');ok(res,{id:String(item._id),statut:item.status},'Statut du paiement modifié');}));
+router.get('/paiements',authenticate,requirePermission('view_payments'),asyncHandler(async(_req,res)=>{const items=await Payment.find().populate('candidateId').populate({path:'applicationId',populate:[{path:'contestId'},{path:'programId'}]}).sort({createdAt:-1}).lean();ok(res,items.map(p=>({id:String(p._id),legacyId:p.legacyId,candidat_nom:p.candidateId?`${p.candidateId.firstName} ${p.candidateId.lastName}`.trim():'',candidat_email:p.candidateId?.email||'',nupcan:p.applicationId?.nupcan||'',concours:p.applicationId?.contestId?.title||'',filiere:p.applicationId?.programId?.name||'',reference:p.paymentReference,transaction_id:p.transactionId,montant:p.amount,devise:p.currency,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,date_paiement:p.createdAt,created_at:p.createdAt})),'Paiements complets chargés');}));
+router.patch('/paiements/:id/status',authenticate,requirePermission('manage_payments'),asyncHandler(async(req,res)=>{const status={valide:'paid',rejete:'failed',en_attente:'pending'}[req.body.statut]||req.body.status;if(!['paid','failed','pending','processing','cancelled','refunded'].includes(status))throw new AppError(422,'INVALID_PAYMENT_STATUS','Statut de paiement invalide');const item=await Payment.findByIdAndUpdate(req.params.id,{$set:{status}},{new:true,runValidators:true});if(!item)throw new AppError(404,'PAYMENT_NOT_FOUND','Paiement introuvable');ok(res,{id:String(item._id),statut:item.status},'Statut du paiement modifié');}));
 router.post('/applications', required('contestId','programId','candidate.firstName','candidate.lastName','candidate.phone'), asyncHandler(async (req, res) => ok(res, await createApplication(req.body), 'Brouillon créé', 201)));
 router.get('/applications/:nupcan', asyncHandler(async (req, res) => { const item = await Application.findOne({ nupcan: req.params.nupcan.toUpperCase() }).populate('candidateId contestId programId').lean(); if (!item) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Candidature introuvable'); ok(res, item); }));
 router.patch('/applications/:nupcan', asyncHandler(async (req, res) => { const update = {}; if (Array.isArray(req.body.completedSteps)) update.completedSteps = req.body.completedSteps; const item = await Application.findOneAndUpdate({ nupcan: req.params.nupcan.toUpperCase(), status: 'draft' }, update, { new: true, runValidators: true }); if (!item) throw new AppError(404, 'DRAFT_NOT_FOUND', 'Brouillon introuvable'); ok(res, item, 'Brouillon enregistré'); }));
