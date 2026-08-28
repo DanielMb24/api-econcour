@@ -387,12 +387,44 @@ router.post('/dossiers', documentUpload.array('documents', 15), asyncHandler(asy
 }));
 router.post('/documents', documentUpload.single('file'), asyncHandler(async(req,res)=>{const nupcan=String(req.body?.nupcan||'').trim().toUpperCase();const application=await Application.findOne({nupcan}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');if(!req.file)throw new AppError(422,'DOCUMENT_REQUIRED','Un document est requis');let requirement=null;if(req.body.requirement_id){requirement=await DocumentRequirement.findOne({_id:req.body.requirement_id,contestId:application.contestId,active:true}).lean();if(!requirement)throw new AppError(422,'INVALID_DOCUMENT_REQUIREMENT','Ce document ne fait pas partie des pièces demandées pour ce concours');const exists=await ApplicationDocument.exists({applicationId:application._id,requirementId:requirement._id});if(exists)throw new AppError(409,'DOCUMENT_ALREADY_SUBMITTED','Cette pièce a déjà été téléversée. Utilisez le remplacement.');}const file=req.file;if(requirement?.acceptedMimeTypes?.length&&!requirement.acceptedMimeTypes.includes(file.mimetype))throw new AppError(422,'INVALID_DOCUMENT_TYPE','Format de fichier non autorisé pour cette pièce');if(requirement?.maxSizeBytes&&file.size>requirement.maxSizeBytes)throw new AppError(422,'DOCUMENT_TOO_LARGE','Le fichier dépasse la taille autorisée');const document=await ApplicationDocument.create({applicationId:application._id,candidateId:application.candidateId,requirementId:requirement?._id,type:requirement?.name||String(req.body.nomdoc||file.originalname),required:requirement?.required||false,storageKey:`documents/${nupcan}/${crypto.randomUUID()}`,contentData:`data:${file.mimetype};base64,${file.buffer.toString('base64')}`,originalName:file.originalname,safeName:file.originalname.replace(/[^a-zA-Z0-9._-]/g,'_'),mimeType:file.mimetype,size:file.size,checksum:crypto.createHash('sha256').update(file.buffer).digest('hex'),status:'uploaded'});ok(res,documentView(document),'Document ajouté',201);}));
 router.put('/documents/:id/replace', documentUpload.single('file'), asyncHandler(async(req,res)=>{if(!req.file)throw new AppError(422,'DOCUMENT_REQUIRED','Un document est requis');const old=await ApplicationDocument.findById(req.params.id);if(!old)throw new AppError(404,'DOCUMENT_NOT_FOUND','Document introuvable');const file=req.file;old.type=String(req.body.nomdoc||old.type);old.contentData=`data:${file.mimetype};base64,${file.buffer.toString('base64')}`;old.originalName=file.originalname;old.safeName=file.originalname.replace(/[^a-zA-Z0-9._-]/g,'_');old.mimeType=file.mimetype;old.size=file.size;old.checksum=crypto.createHash('sha256').update(file.buffer).digest('hex');old.status='uploaded';old.rejectionReason=undefined;old.version+=1;await old.save();ok(res,documentView(old),'Document remplacé');}));
-router.put('/document-validation/:id', authenticate, requirePermission('validate_documents'), asyncHandler(async (req, res) => {
-  const status = { valide: 'approved', rejete: 'rejected', approved: 'approved', rejected: 'rejected' }[req.body.statut || req.body.status];
-  if (!status) throw new AppError(422, 'INVALID_DOCUMENT_STATUS', 'Statut de document invalide');
-  const document = await ApplicationDocument.findByIdAndUpdate(req.params.id, { $set: { status, rejectionReason: status === 'rejected' ? String(req.body.commentaire || '').trim() : undefined } }, { new: true, runValidators: true }).lean();
-  if (!document) throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document introuvable');
-  ok(res, documentView(document), 'Statut du document mis à jour');
+const refreshApplicationStatus = async applicationId => {
+  const application = await Application.findById(applicationId).populate('contestId');
+  if (!application) return null;
+  const [documents, requiredDocuments, payment] = await Promise.all([
+    ApplicationDocument.find({ applicationId }).select('requirementId required status').lean(),
+    DocumentRequirement.find({
+      contestId: application.contestId?._id || application.contestId,
+      active: true,
+      required: true,
+      $or: [{ programId: null }, { programId: application.programId }]
+    }).select('_id').lean(),
+    Payment.findOne({ applicationId }).sort({ createdAt: -1 }).lean()
+  ]);
+  const rejected = documents.some(item => item.status === 'rejected');
+  const approvedRequirementIds = new Set(documents.filter(item => item.status === 'approved' && item.requirementId).map(item => String(item.requirementId)));
+  const requiredApproved = requiredDocuments.every(item => approvedRequirementIds.has(String(item._id)));
+  const requiredStandalone = documents.filter(item => item.required && !item.requirementId);
+  const allDocumentsApproved = documents.length > 0 && requiredApproved && requiredStandalone.every(item => item.status === 'approved');
+  const paymentRequired = Number(application.contestId?.fee || application.contestSnapshot?.fee || 0) > 0;
+  const paymentApproved = !paymentRequired || payment?.status === 'paid';
+  const nextStatus = rejected ? 'rejected' : allDocumentsApproved && paymentApproved ? 'approved' : documents.length ? 'under_review' : 'draft';
+  const documentStatus = rejected ? 'rejected' : allDocumentsApproved ? 'approved' : documents.length ? 'under_review' : 'pending';
+  const paymentStatus = payment?.status || (paymentRequired ? 'pending' : 'paid');
+  if (application.status !== nextStatus) application.statusHistory.push({ status: nextStatus, at: new Date() });
+  application.status = nextStatus;
+  application.documentStatus = documentStatus;
+  application.paymentStatus = paymentStatus;
+  if (nextStatus !== 'draft' && !application.submittedAt) application.submittedAt = new Date();
+  await application.save();
+  return nextStatus;
+};
+router.put('/document-validation/:id', authenticate, requirePermission('validate_documents'), asyncHandler(async(req,res)=>{
+  const status = {valide:'approved',rejete:'rejected',approved:'approved',rejected:'rejected'}[req.body.statut || req.body.status];
+  if(!status)throw new AppError(422,'INVALID_DOCUMENT_STATUS','Statut de document invalide');
+  const document = await ApplicationDocument.findByIdAndUpdate(req.params.id,{$set:{status,rejectionReason:status==='rejected'?String(req.body.commentaire||'').trim():undefined}},{new:true,runValidators:true});
+  if(!document)throw new AppError(404,'DOCUMENT_NOT_FOUND','Document introuvable');
+  const applicationStatus = await refreshApplicationStatus(document.applicationId);
+  ok(res,{...documentView(document.toObject()),applicationStatus},'Statut du document et de la candidature mis à jour');
 }));
 router.patch('/documents/:id', required('nomdoc'), asyncHandler(async(req,res)=>{const item=await ApplicationDocument.findById(req.params.id);if(!item)throw new AppError(404,'DOCUMENT_NOT_FOUND','Document introuvable');if(item.requirementId)throw new AppError(409,'REQUIRED_DOCUMENT_LOCKED','Le libellé d’une pièce exigée est défini par le concours');item.type=String(req.body.nomdoc).trim();if(!item.type)throw new AppError(422,'VALIDATION_ERROR','Le nom du document est obligatoire');await item.save();ok(res,documentView(item),'Document modifié');}));
 router.delete('/documents/:id', asyncHandler(async(req,res)=>{const item=await ApplicationDocument.findByIdAndDelete(req.params.id);if(!item)throw new AppError(404,'DOCUMENT_NOT_FOUND','Document introuvable');ok(res,{id:String(item._id)},'Document supprimé');}));
