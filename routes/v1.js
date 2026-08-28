@@ -340,14 +340,30 @@ router.post('/candidats/nipcan/verify', required('nipcan'), asyncHandler(async (
 }));
 const legacyDocumentStatus = status => ({ approved: 'valide', rejected: 'rejete', under_review: 'en_attente', uploaded: 'en_attente', pending: 'en_attente' }[status] || status);
 const legacyPaymentStatus = status => ({ paid: 'valide', pending: 'en_attente', processing: 'en_attente', failed: 'rejete', cancelled: 'rejete', refunded: 'rembourse' }[status] || status);
+const normalizeDocumentName = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const requirementDocumentMap = (requirements, documents) => {
+  const normalizedStandalone = new Map(
+    documents
+      .filter(item => !item.requirementId)
+      .map(item => [normalizeDocumentName(item.type), item])
+      .filter(([name]) => name)
+  );
+  return requirements.map(requirement => ({
+    requirement,
+    document:
+      documents.find(item => item.requirementId && String(item.requirementId) === String(requirement._id))
+      || normalizedStandalone.get(normalizeDocumentName(requirement.name))
+      || null
+  }));
+};
 const documentCompletion = async application => {
   const [requirements, documents] = await Promise.all([
     DocumentRequirement.find({contestId:application.contestId?._id||application.contestId,active:true,required:true,$or:[{programId:null},{programId:application.programId?._id||application.programId}]}).select('_id name').lean(),
-    ApplicationDocument.find({applicationId:application._id}).select('requirementId status').lean()
+    ApplicationDocument.find({applicationId:application._id}).select('requirementId status type').lean()
   ]);
-  const uploadedRequirementIds = new Set(documents.filter(item=>item.requirementId).map(item=>String(item.requirementId)));
-  const missing = requirements.filter(item=>!uploadedRequirementIds.has(String(item._id)));
-  return {required:requirements.length,submitted:requirements.length-missing.length,missing:missing.length,missingNames:missing.map(item=>item.name),complete:missing.length===0,documents};
+  const mapped = requirementDocumentMap(requirements, documents);
+  const missing = mapped.filter(item=>!item.document).map(item=>item.requirement);
+  return {required:requirements.length,submitted:requirements.length-missing.length,missing:missing.length,missingNames:missing.map(item=>item.name),complete:missing.length===0,documents,mapped};
 };
 const syncIncompleteDocumentsNotification = async (application, completion) => {
   const title = 'Documents obligatoires manquants';
@@ -419,7 +435,7 @@ router.get('/dossiers/admin/all', authenticate, requirePermission('view_document
   ok(res, transmitted.map(document => ({ ...documentView(document), nupcan: document.applicationId?.nupcan || '', nomcan: document.applicationId?.candidateId?.lastName || '', prncan: document.applicationId?.candidateId?.firstName || '', maican: document.applicationId?.candidateId?.email || '', libcnc: document.applicationId?.contestId?.title || '' })), 'Dossiers payés transmis aux agents');
 }));
 router.get('/candidats/nupcan/:nupcan/documents', asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).trim().toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');ok(res,(await ApplicationDocument.find({applicationId:application._id}).sort({createdAt:-1}).lean()).map(documentView),'Documents chargés');}));
-router.get('/candidats/nupcan/:nupcan/document-checklist', asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).trim().toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const [requirements,documents,payment]=await Promise.all([DocumentRequirement.find({contestId:application.contestId,active:true,$or:[{programId:null},{programId:application.programId}]}).sort({required:-1,createdAt:1}).lean(),ApplicationDocument.find({applicationId:application._id}).sort({createdAt:-1}).lean(),Payment.findOne({applicationId:application._id}).sort({createdAt:-1}).lean()]);const byRequirement=new Map(documents.filter(document=>document.requirementId).map(document=>[String(document.requirementId),document]));const linkedDocumentIds=new Set([...byRequirement.values()].map(document=>String(document._id)));const checklist=requirements.map(requirement=>({requirement:requirementView(requirement),document:byRequirement.has(String(requirement._id))?documentView(byRequirement.get(String(requirement._id))):null}));const supplemental=documents.filter(document=>!linkedDocumentIds.has(String(document._id))).map(documentView);const required=requirements.filter(item=>item.required);const missing=required.filter(item=>!byRequirement.has(String(item._id)));const completion={required:required.length,submitted:required.length-missing.length,missing:missing.length,missingNames:missing.map(item=>item.name),complete:missing.length===0};await syncIncompleteDocumentsNotification(application,completion);ok(res,{nupcan:application.nupcan,checklist,supplemental,paymentEligible:completion.complete||!!payment,alreadyPaid:payment?.status==='paid',summary:{...completion,approved:checklist.filter(item=>item.requirement.required&&item.document?.statut==='valide').length,rejected:checklist.filter(item=>item.document?.statut==='rejete').length}},'Checklist documentaire chargée');}));
+router.get('/candidats/nupcan/:nupcan/document-checklist', asyncHandler(async(req,res)=>{const application=await Application.findOne({nupcan:String(req.params.nupcan).trim().toUpperCase()}).lean();if(!application)throw new AppError(404,'APPLICATION_NOT_FOUND','Candidature introuvable');const [requirements,documents,payment]=await Promise.all([DocumentRequirement.find({contestId:application.contestId,active:true,$or:[{programId:null},{programId:application.programId}]}).sort({required:-1,createdAt:1}).lean(),ApplicationDocument.find({applicationId:application._id}).sort({createdAt:-1}).lean(),Payment.findOne({applicationId:application._id}).sort({createdAt:-1}).lean()]);const mapped=requirementDocumentMap(requirements,documents);const linkedDocumentIds=new Set(mapped.filter(item=>item.document).map(item=>String(item.document._id)));const checklist=mapped.map(({requirement,document})=>({requirement:requirementView(requirement),document:document?documentView(document):null}));const supplemental=documents.filter(document=>!linkedDocumentIds.has(String(document._id))).map(documentView);const required=mapped.filter(item=>item.requirement.required);const missing=required.filter(item=>!item.document).map(item=>item.requirement);const completion={required:required.length,submitted:required.length-missing.length,missing:missing.length,missingNames:missing.map(item=>item.name),complete:missing.length===0};await syncIncompleteDocumentsNotification(application,completion);ok(res,{nupcan:application.nupcan,checklist,supplemental,paymentEligible:completion.complete||!!payment,alreadyPaid:payment?.status==='paid',summary:{...completion,approved:checklist.filter(item=>item.requirement.obligatoire&&item.document?.statut==='valide').length,rejected:checklist.filter(item=>item.document?.statut==='rejete').length}},'Checklist documentaire chargée');}));
 router.post('/dossiers', documentUpload.array('documents', 15), asyncHandler(async (req, res) => {
   const nupcan = String(req.body?.nupcan || '').trim().toUpperCase();
   const application = await Application.findOne({ nupcan }).lean();
