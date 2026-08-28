@@ -1,16 +1,37 @@
 const nodemailer = require('nodemailer');
 
 // Configuration du transporteur email
-const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587);
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp.gmail.com',
+const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || 587);
+const smtpUser = String(process.env.SMTP_USER || process.env.EMAIL_USER || process.env.MAIL_USER || '').trim();
+const smtpPass = String(process.env.SMTP_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || '').replace(/\s+/g, '');
+const emailFrom = process.env.EMAIL_FROM || (smtpUser ? `GABConcours <${smtpUser}>` : '');
+const smtpTransport = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || 'smtp.gmail.com',
     port: smtpPort,
     secure: smtpPort === 465,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     auth: {
-        user: process.env.SMTP_USER || process.env.EMAIL_USER,
-        pass: process.env.SMTP_PASS || process.env.EMAIL_PASSWORD
+        user: smtpUser,
+        pass: smtpPass
     }
 });
+
+const transporter = {
+    async sendMail(mailOptions) {
+        if (!smtpUser || !smtpPass) {
+            throw new Error('SMTP_NOT_CONFIGURED: ajoutez SMTP_USER et SMTP_PASS dans les variables Vercel de l’API');
+        }
+        const options = {...mailOptions, from: emailFrom};
+        try {
+            return await smtpTransport.sendMail(options);
+        } catch (error) {
+            console.warn(JSON.stringify({level: 'warn', code: 'SMTP_FIRST_ATTEMPT_FAILED', message: error.message}));
+            return smtpTransport.sendMail(options);
+        }
+    }
+};
 
 class EmailService {
     // Envoyer les identifiants à un nouvel admin
