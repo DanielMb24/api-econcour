@@ -7,7 +7,20 @@ const env = require('./config/env');
 const { correlation, notFound, errorHandler } = require('./utils/api');
 function createApp() {
   const app = express(); app.disable('x-powered-by'); app.set('trust proxy', 1);
-  app.use(correlation, helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+  app.use(correlation, helmet({
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'frame-ancestors': [
+          "'self'",
+          'https://gabonconcours.vercel.app',
+          'https://econcour.vercel.app',
+        ],
+      },
+    },
+  }));
   const allowedCorsOrigins = new Set([
     ...env.corsOrigins,
     'https://econcour.vercel.app',
