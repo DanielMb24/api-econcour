@@ -155,6 +155,29 @@ router.get('/statistics',asyncHandler(async(_req,res)=>{
   ok(res,{totalConcours:contests,concours:{total:contests,ouverts:openContests,fermes:contests-openContests},totalCandidatures:applications,totalCandidats:candidates,candidats:{total:candidates,complets:approvedApps,en_attente:pendingApps,validation_admin:await Application.countDocuments({status:'under_review'})},documents:{total:documents,en_attente:pendingDocs,valides:approvedDocs,rejetes:rejectedDocs},paiements:{total:payments,valides:paidAgg[0]?.count||0,en_attente:await Payment.countDocuments({status:{$in:['pending','processing']}}),montant_total:paidAgg[0]?.total||0},messages:{total:messages,non_lus:unreadMessages}},'Statistiques réelles');
 }));
 router.get('/admin/etablissement/:establishmentId/concours',authenticate,asyncHandler(async(req,res)=>{const id=req.params.establishmentId;const establishment=await Establishment.findOne(establishmentFilter(id)).lean();if(!establishment)throw new AppError(404,'ESTABLISHMENT_NOT_FOUND','Établissement introuvable');if(req.admin.role!=='super_admin'&&!req.admin.establishmentIds.some(assigned=>assigned.equals(establishment._id)))throw new AppError(403,'ESTABLISHMENT_FORBIDDEN','Établissement non attribué');const items=await Contest.find({establishmentId:establishment._id}).populate('educationLevelId programIds').sort({createdAt:-1}).lean();ok(res,items.map(toLegacyContest),'Concours de l’établissement');}));
+router.get('/admin/concours/:contestId/candidats', authenticate, asyncHandler(async (req, res) => {
+  const contest = await Contest.findOne(contestFilter(req.params.contestId)).populate('establishmentId').lean();
+  if (!contest) throw new AppError(404, 'CONTEST_NOT_FOUND', 'Concours introuvable');
+  if (req.admin.role !== 'super_admin' && !req.admin.establishmentIds.some(assigned => String(assigned) === String(contest.establishmentId?._id))) throw new AppError(403, 'ESTABLISHMENT_FORBIDDEN', 'Concours non attribué');
+  const applications = await Application.find({ contestId: contest._id }).populate('candidateId programId').sort({ createdAt: -1 }).lean();
+  const applicationIds = applications.map(application => application._id);
+  const [documents, payments] = await Promise.all([
+    ApplicationDocument.find({ applicationId: { $in: applicationIds } }).lean(),
+    Payment.find({ applicationId: { $in: applicationIds } }).sort({ createdAt: -1 }).lean()
+  ]);
+  ok(res, applications.map(application => {
+    const candidate = application.candidateId;
+    const payment = payments.find(item => String(item.applicationId) === String(application._id));
+    return {
+      id: String(application._id), candidat_id: String(candidate?._id || ''), concours_id: contest.legacyId || String(contest._id), filiere_id: application.programId?.legacyId || String(application.programId?._id || ''),
+      statut: application.status === 'approved' ? 'valide' : application.status === 'rejected' ? 'rejete' : 'en_attente', created_at: application.createdAt, updated_at: application.updatedAt,
+      nupcan: application.nupcan, nomcan: candidate?.lastName || '', prncan: candidate?.firstName || '', maican: candidate?.email || '', telcan: candidate?.phone || '', dtncan: candidate?.birthDate, ldncan: candidate?.birthPlace || '', phtcan: candidate?.photoData || '',
+      libcnc: contest.title, sescnc: '', fracnc: contest.fee || 0, nomfil: application.programId?.name || '',
+      paiement: payment ? { statut: payment.status, montant: payment.amount, methode: payment.provider, reference_paiement: payment.paymentReference } : undefined,
+      documents: documents.filter(document => String(document.applicationId) === String(application._id)).map(document => ({ id: String(document._id), type: document.type, statut: document.status }))
+    };
+  }), 'Candidatures du concours chargées');
+}));
 router.get('/messages/admin',authenticate,asyncHandler(async(req,res)=>{const query={};if(req.query.nupcan)query.legacyNupcan=String(req.query.nupcan);const items=await Message.find(query).populate('candidateId administratorId applicationId').sort({createdAt:-1}).limit(200).lean();ok(res,items.map(m=>({id:String(m._id),legacyId:m.legacyId,candidat_nupcan:m.applicationId?.nupcan||m.legacyNupcan||'',admin_id:m.administratorId?.legacyId,sujet:m.subject||'',message:m.body,expediteur:m.senderType==='administrator'?'admin':'candidat',statut:m.readAt?'lu':'non_lu',created_at:m.createdAt,updated_at:m.updatedAt,nomcan:m.candidateId?.lastName||'',prncan:m.candidateId?.firstName||'',maican:m.candidateId?.email||'',admin_nom:m.administratorId?.lastName||'',admin_prenom:m.administratorId?.firstName||''})),'Messages chargés');}));
 const adminView=a=>({id:String(a._id),legacyId:a.legacyId,nom:a.lastName,prenom:a.firstName,email:a.email,role:a.role,admin_role:a.role==='finance'?'paiements':'documents',etablissement_id:a.establishmentIds?.[0]?.legacyId,etablissement_object_id:a.establishmentIds?.[0]?._id,etablissement_nom:a.establishmentIds?.[0]?.name||'',statut:a.active?'actif':'inactif',active:a.active,derniere_connexion:a.lastLoginAt,created_at:a.createdAt});
 router.get('/admin/management/admins',authenticate,requireSuperAdmin,asyncHandler(async(_req,res)=>ok(res,(await Administrator.find().populate('establishmentIds').sort({createdAt:-1}).lean()).map(adminView),'Administrateurs chargés')));
