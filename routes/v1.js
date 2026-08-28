@@ -43,7 +43,7 @@ const documentUpload = multer({
 const audit = (req, action, entityType, entityId, metadata = {}) => AuditLog.create({actorId:req.admin?._id,action,entityType,entityId,correlationId:req.correlationId,metadata});
 const assertReadableDocument = file => {const error=documentReadabilityError(file);if(error)throw new AppError(422,'UNREADABLE_DOCUMENT',error);};
 const assertContestAcceptsPayment = application => {const error=contestPaymentBlockReason(application.contestId);if(error)throw new AppError(409,'CONTEST_PAYMENT_CLOSED',error);};
-router.get('/health', asyncHandler(async (_req, res) => ok(res, { database: 'mongodb', status: 'ready' }, 'Service disponible')));
+router.get('/health', asyncHandler(async (_req, res) => ok(res, { database: 'mongodb', email: emailService.getConfigurationStatus(), status: 'ready' }, 'Service disponible')));
 router.get('/sessions', asyncHandler(async (_req, res) => ok(res, [], 'Sessions chargées')));
 router.post('/sessions', asyncHandler(async (req, res) => {
   const nupcan = String(req.body?.nupcan || '').trim().toUpperCase();

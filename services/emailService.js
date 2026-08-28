@@ -34,6 +34,15 @@ const transporter = {
 };
 
 class EmailService {
+    getConfigurationStatus() {
+        return {
+            configured: Boolean(smtpUser && smtpPass),
+            provider: process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || 'smtp.gmail.com',
+            port: smtpPort,
+            fromConfigured: Boolean(emailFrom)
+        };
+    }
+
     // Envoyer les identifiants à un nouvel admin
     async sendAdminCredentials(adminData) {
         try {
