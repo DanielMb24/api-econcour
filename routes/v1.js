@@ -40,9 +40,10 @@ const scopedApplication = async(admin, value) => {const filter=isObjectId(value)
 const applicationReadOnly = application => application.contestId?.status==='archived'||Boolean(application.contestId?.closesAt&&new Date(application.contestId.closesAt)<new Date());
 const gradeSummary = grades => {const total=grades.reduce((sum,item)=>sum+Number(item.coefficient||1),0);const points=grades.reduce((sum,item)=>sum+Number(item.score)*Number(item.coefficient||1),0);return {average:total?Number((points/total).toFixed(2)):null,totalCoefficient:total};};
 const rolePermissions = {
-  applications_manager: ['view_applications', 'manage_applications'], documents_validator: ['view_documents', 'validate_documents'], documents_viewer: ['view_documents'],
-  grades_entry: ['view_applications', 'enter_grades'], grades_validator: ['view_applications', 'validate_grades'], payments_viewer: ['view_payments'], reports_viewer: ['view_reports'], messaging_agent: ['manage_messages']
+  applications_manager: ['view_applications', 'manage_applications'], documents_validator: ['view_applications', 'view_documents', 'validate_documents'], documents_viewer: ['view_documents'],
+  grades_entry: ['view_applications', 'enter_grades', 'validate_grades', 'view_reports'], grades_validator: ['view_applications', 'validate_grades'], payments_viewer: ['view_payments'], reports_viewer: ['view_reports'], messaging_agent: ['manage_messages']
 };
+const creatableSubAdminRoles = new Set(['grades_entry', 'documents_validator']);
 const isObjectId = value => typeof value === 'string' && /^[a-f\d]{24}$/i.test(value.trim());
 const idFilter = value => isObjectId(value) ? { _id: value.trim() } : { legacyId: Number(value) };
 const candidatePhotoUpload = multer({
@@ -227,11 +228,13 @@ router.get('/subadmins', authenticate, requireSubAdminManager, asyncHandler(asyn
 }));
 router.post('/subadmins', authenticate, requireSubAdminManager, asyncHandler(async (req, res) => {
   const role = String(req.body.admin_role || req.body.subAdminRole || '');
-  if (!rolePermissions[role]) throw new AppError(422, 'INVALID_SUBADMIN_ROLE', 'Rôle de sous-administrateur invalide');
+  if (!creatableSubAdminRoles.has(role)) throw new AppError(422, 'INVALID_SUBADMIN_ROLE', 'Le rôle doit être « gestion des notes » ou « gestion des documents »');
   const establishmentId = req.admin.role === 'super_admin' ? req.body.etablissement_id : req.admin.establishmentIds?.[0];
   if (!establishmentId) throw new AppError(422, 'ESTABLISHMENT_REQUIRED', 'Établissement obligatoire');
   const establishment = await Establishment.findOne(idFilter(establishmentId)).select('_id').lean();
   if (!establishment) throw new AppError(422, 'INVALID_ESTABLISHMENT', 'Établissement introuvable');
+  const activeSubAdmins = await Administrator.countDocuments({ role: 'sub_admin', active: true, establishmentIds: establishment._id });
+  if (activeSubAdmins >= 3) throw new AppError(409, 'SUBADMIN_LIMIT_REACHED', 'La limite de trois sous-administrateurs actifs est atteinte');
   const temporaryPassword = String(req.body.password || crypto.randomBytes(12).toString('base64url'));
   const admin = await Administrator.create({ firstName: String(req.body.prenom || '').trim(), lastName: String(req.body.nom || '').trim(), email: String(req.body.email || '').trim().toLowerCase(), passwordHash: await bcrypt.hash(temporaryPassword, 12), mustChangePassword: true, role: 'sub_admin', subAdminRole: role, permissions: rolePermissions[role], establishmentIds: [establishment._id], createdBy: req.admin._id, active: true });
   const populated = await Administrator.findById(admin._id).populate('establishmentIds').lean();
