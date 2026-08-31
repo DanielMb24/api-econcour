@@ -11,6 +11,7 @@
     "verify-db": "node scripts/verify-mongodb.js",
     "verify:migration": "node scripts/verify-migration-relations.js",
     "migrate:admin-roles": "node scripts/migrate-admin-roles.js",
+    "migrate:temporary-passwords": "node scripts/migrate-temporary-passwords.js",
     "admin:create-super": "node scripts/create-super-admin-mongodb.js",
     "inspect:mysql": "node scripts/inspect-mysql-schema.js",
     "inspect:mysql:summary": "node scripts/inspect-mysql-schema.js --summary",
@@ -18,7 +19,8 @@
     "migrate": "node scripts/migrate-linked-mysql-to-mongodb.js",
     "test": "node --test tests/**/*.test.js",
     "typecheck": "node --check app.js && node --check server-mongodb.js",
-    "lint": "node scripts/lint.js"
+    "lint": "node scripts/lint.js",
+    "scripts": "node scripts/scripts.js"
   },
   "dependencies": {
     "@types/pdf-parse": "^1.1.5",

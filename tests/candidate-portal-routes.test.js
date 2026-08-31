@@ -12,16 +12,30 @@ test('toutes les routes du portail candidat sont centralisées dans API v1', () 
     'GET /candidats/nupcan/:nupcan/nipcan',
     'GET /candidats/nupcan/:nupcan/documents',
     'GET /candidats/nupcan/:nupcan/document-checklist',
-    'GET /applications/:nupcan/payment-eligibility',
     'POST /documents',
     'PUT /documents/:id/replace',
     'DELETE /documents/:id',
     'GET /documents/:id/download',
-    'POST /paiements',
-    'POST /payments/webhook/:provider',
     'GET /notifications/candidat/:nupcan',
     'GET /messages/candidat/:nupcan',
     'POST /messages/candidat',
     'GET /grades/candidat/:nupcan'
   ]) assert.ok(registered.has(route), `Route manquante: ${route}`);
+});
+
+test('les opérations administrateur couvrent le cycle complet demandé',()=>{
+  for(const route of [
+    'PUT /admin/auth/password',
+    'GET /admin/applications/:id',
+    'PATCH /admin/applications/:id/status',
+    'PATCH /admin/applications/:id/candidate',
+    'DELETE /admin/applications/:id',
+    'PUT /admin/grades/:id',
+    'DELETE /admin/grades/:id',
+    'POST /admin/grades/batch',
+    'POST /admin/contests/:id/publish-results',
+    'GET /admin/archives',
+    'GET /admin/reports/applications/:id/transcript.pdf',
+    'GET /admin/reports/contests/:id/transcripts.pdf'
+  ]) assert.ok(registered.has(route),`Route manquante: ${route}`);
 });

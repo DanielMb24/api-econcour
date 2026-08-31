@@ -17,4 +17,8 @@ const scopeEstablishment = (req, _res, next) => {
   if (requested && !req.admin.establishmentIds.some(id => id.equals(requested))) return next(new AppError(403, 'ESTABLISHMENT_FORBIDDEN', 'Établissement non attribué'));
   next();
 };
-module.exports = { authenticate, scopeEstablishment };
+const requirePasswordChanged = (req, _res, next) => {
+  if (!req.admin?.mustChangePassword) return next();
+  next(new AppError(403, 'PASSWORD_CHANGE_REQUIRED', 'Vous devez modifier votre mot de passe temporaire'));
+};
+module.exports = { authenticate, scopeEstablishment, requirePasswordChanged };
