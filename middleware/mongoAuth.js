@@ -9,6 +9,7 @@ const authenticate = asyncHandler(async (req, _res, next) => {
   const payload = jwt.verify(token, env.jwtSecret);
   const admin = await Administrator.findById(payload.sub);
   if (!admin?.active) throw new AppError(401, 'INVALID_SESSION', 'Session invalide');
+  if (admin.passwordChangedAt && payload.iat * 1000 < new Date(admin.passwordChangedAt).getTime()) throw new AppError(401, 'SESSION_EXPIRED', 'Reconnectez-vous après le changement de mot de passe');
   req.admin = admin; next();
 });
 const scopeEstablishment = (req, _res, next) => {
