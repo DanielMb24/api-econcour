@@ -4,6 +4,7 @@ const { Candidate, Application, Payment, Administrator, Contest } = require('../
 test('NIPCAN identifie un candidat de manière unique', () => { const index=Candidate.schema.indexes().find(([keys])=>keys.nipcan===1); assert.equal(index[1].unique,true); });
 test('NUPCAN possède un index unique', () => { const index=Application.schema.indexes().find(([keys])=>keys.nupcan===1); assert.equal(index[1].unique,true); });
 test('une candidature est unique par candidat et concours', () => { const index=Application.schema.indexes().find(([keys])=>keys.candidateId===1&&keys.contestId===1); assert.equal(index[1].unique,true); });
+test('une adresse e-mail non vide ne peut appartenir qu’à un candidat', () => { const index=Candidate.schema.indexes().find(([keys])=>keys.email===1); assert.equal(index[1].unique,true); assert.deepEqual(index[1].partialFilterExpression,{email:{$type:'string',$gt:''}}); });
 test('les références de paiement sont idempotentes', () => { for(const field of ['paymentReference','transactionId']) { const index=Payment.schema.indexes().find(([keys])=>keys[field]===1); assert.equal(index[1].unique,true); } });
 test('les statuts de paiement couvrent le cycle complet', () => { assert.deepEqual(Payment.schema.path('status').enumValues,['pending','processing','paid','failed','cancelled','refunded']); });
 test('les administrateurs peuvent être forcés à changer leur mot de passe',()=>{assert.equal(Administrator.schema.path('mustChangePassword').instance,'Boolean');});
