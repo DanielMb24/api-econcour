@@ -467,6 +467,32 @@ router.post('/paiements',authenticationLimiter,required('nupcan','methode'),asyn
 router.get('/paiements',authenticate,requirePermission('view_payments'),asyncHandler(async(req,res)=>{const ids=await scopedApplicationIds(req.admin);const items=await Payment.find(ids?{applicationId:{$in:ids}}:{}).populate('candidateId').populate({path:'applicationId',populate:[{path:'contestId'},{path:'programId'}]}).sort({createdAt:-1}).lean();ok(res,items.map(p=>({id:String(p._id),legacyId:p.legacyId,candidat_nom:p.candidateId?`${p.candidateId.firstName} ${p.candidateId.lastName}`.trim():'',candidat_email:p.candidateId?.email||'',nupcan:p.applicationId?.nupcan||'',concours:p.applicationId?.contestId?.title||'',filiere:p.applicationId?.programId?.name||'',reference:p.paymentReference,transaction_id:p.transactionId,montant:p.amount,devise:p.currency,methode:p.provider,statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete',refunded:'rembourse'}[p.status]||p.status,date_paiement:p.createdAt,created_at:p.createdAt})),'Paiements complets chargés');}));
 router.use('/paiements/:id/status',authenticate,asyncHandler(async(req,_res,next)=>{const payment=await Payment.findById(req.params.id).populate({path:'applicationId',populate:{path:'contestId'}});if(!payment)throw new AppError(404,'PAYMENT_NOT_FOUND','Paiement introuvable');assertContestAccess(req.admin,payment.applicationId.contestId);assertContestWritable(payment.applicationId.contestId);next();}));
 router.patch('/paiements/:id/status',authenticate,requirePermission('manage_payments'),asyncHandler(async(req,res)=>{const status={valide:'paid',rejete:'failed',en_attente:'pending'}[req.body.statut]||req.body.status;if(!['paid','failed','pending','processing','cancelled','refunded'].includes(status))throw new AppError(422,'INVALID_PAYMENT_STATUS','Statut de paiement invalide');const item=await Payment.findByIdAndUpdate(req.params.id,{$set:{status}},{new:true,runValidators:true});if(!item)throw new AppError(404,'PAYMENT_NOT_FOUND','Paiement introuvable');ok(res,{id:String(item._id),statut:item.status},'Statut du paiement modifié');}));
+router.get('/applications/:nupcan/payment-eligibility', asyncHandler(async (req, res) => {
+  const nupcan = String(req.params.nupcan).trim().toUpperCase();
+  const application = await Application.findOne({ nupcan }).populate('candidateId contestId programId').lean();
+  if (!application) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Candidature introuvable');
+  const [requirements, documents, payment] = await Promise.all([
+    DocumentRequirement.find({ contestId: application.contestId._id, active: true, required: true, $or: [{ programId: null }, { programId: application.programId?._id }] }).select('_id').lean(),
+    ApplicationDocument.find({ applicationId: application._id }).select('requirementId status').lean(),
+    Payment.findOne({ applicationId: application._id }).sort({ createdAt: -1 }).lean()
+  ]);
+  const submitted = new Set(documents.filter(document => document.requirementId && document.status === 'approved').map(document => String(document.requirementId)));
+  const missing = requirements.filter(requirement => !submitted.has(String(requirement._id))).length;
+  const alreadyPaid = payment?.status === 'paid';
+  const candidate = application.candidateId || {};
+  const contest = application.contestId || {};
+  ok(res, {
+    eligible: missing === 0 && !alreadyPaid,
+    missing,
+    alreadyPaid,
+    payment: payment ? { id: String(payment._id), montant: payment.amount, statut: legacyPaymentStatus(payment.status), methode: payment.provider } : null,
+    paymentContext: {
+      nupcan: application.nupcan,
+      candidat: { id: String(candidate._id || ''), nomcan: candidate.lastName || '', prncan: candidate.firstName || '', maican: candidate.email || '', telcan: candidate.phone || '' },
+      concours: { id: contest.legacyId || String(contest._id || ''), libcnc: contest.title || '', fracnc: contest.fee || 0, agecnc: contest.maximumAge || 0, debcnc: contest.opensAt || '', fincnc: contest.closesAt || '' }
+    }
+  }, 'Eligibilité au paiement chargée');
+}));
 router.use('/applications/:nupcan',asyncHandler(async(req,_res,next)=>{if(req.method!=='PATCH')return next();const application=await Application.findOne({nupcan:String(req.params.nupcan).toUpperCase()}).populate('contestId');if(application)assertContestWritable(application.contestId);next();}));
 router.post('/applications', required('contestId','programId','candidate.firstName','candidate.lastName','candidate.phone'), asyncHandler(async (req, res) => ok(res, await createApplication(req.body), 'Brouillon créé', 201)));
 router.get('/applications/:nupcan', asyncHandler(async (req, res) => { const item = await Application.findOne({ nupcan: req.params.nupcan.toUpperCase() }).populate('candidateId contestId programId').lean(); if (!item) throw new AppError(404, 'APPLICATION_NOT_FOUND', 'Candidature introuvable'); ok(res, item); }));
