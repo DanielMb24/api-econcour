@@ -476,7 +476,8 @@ router.get('/applications/:nupcan/payment-eligibility', asyncHandler(async (req,
     ApplicationDocument.find({ applicationId: application._id }).select('requirementId status').lean(),
     Payment.findOne({ applicationId: application._id }).sort({ createdAt: -1 }).lean()
   ]);
-  const submitted = new Set(documents.filter(document => document.requirementId && document.status === 'approved').map(document => String(document.requirementId)));
+  // Le paiement dépend du dépôt des pièces, pas de leur validation administrative.
+  const submitted = new Set(documents.filter(document => document.requirementId).map(document => String(document.requirementId)));
   const missing = requirements.filter(requirement => !submitted.has(String(requirement._id))).length;
   const alreadyPaid = payment?.status === 'paid';
   const candidate = application.candidateId || {};
