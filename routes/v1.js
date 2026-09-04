@@ -365,11 +365,14 @@ router.get('/candidats/nipcan/:nipcan/dashboard', asyncHandler(async (req, res) 
     ApplicationDocument.find({ applicationId: { $in: applicationIds } }).lean(),
     Payment.find({ applicationId: { $in: applicationIds } }).sort({ createdAt: -1 }).lean()
   ]);
+  const requirements = await DocumentRequirement.find({ contestId: { $in: applications.map(application => application.contestId?._id).filter(Boolean) }, active: true, required: true }).select('contestId programId').lean();
   const candidatures = applications.map(application => {
     const applicationDocuments = documents.filter(document => String(document.applicationId) === String(application._id));
     const validDocuments = applicationDocuments.filter(document => document.status === 'approved').length;
+    const requiredDocuments = requirements.filter(requirement => String(requirement.contestId) === String(application.contestId?._id) && (!requirement.programId || String(requirement.programId) === String(application.programId?._id)));
+    const submittedDocuments = new Set(applicationDocuments.filter(document => document.requirementId).map(document => String(document.requirementId))).size;
     const payment = payments.find(item => String(item.applicationId) === String(application._id));
-    const documentsComplete = applicationDocuments.length > 0 && validDocuments === applicationDocuments.length;
+    const documentsComplete = submittedDocuments >= requiredDocuments.length;
     const paymentComplete = payment?.status === 'paid';
     const resultAvailable = ['approved', 'rejected'].includes(application.status);
     const completed = [true, documentsComplete, paymentComplete, resultAvailable].filter(Boolean).length;
@@ -381,6 +384,8 @@ router.get('/candidats/nipcan/:nipcan/dashboard', asyncHandler(async (req, res) 
       progression: completed * 25,
       created_at: application.createdAt,
       documents_count: applicationDocuments.length,
+      documents_requis: requiredDocuments.length,
+      documents_deposes: submittedDocuments,
       documents_valides: validDocuments,
       paiement_statut: payment ? legacyPaymentStatus(payment.status) : null,
       etapes: { inscription: true, documents: documentsComplete, paiement: paymentComplete, resultats: resultAvailable }
