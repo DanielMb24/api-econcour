@@ -6,7 +6,15 @@ const authenticate = asyncHandler(async (req, _res, next) => {
   const bearer = req.get('authorization');
   const token = req.cookies?.admin_session || (bearer?.startsWith('Bearer ') ? bearer.slice(7) : null);
   if (!token) throw new AppError(401, 'AUTH_REQUIRED', 'Authentification requise');
-  const payload = jwt.verify(token, env.jwtSecret);
+  let payload;
+  try {
+    payload = jwt.verify(token, env.jwtSecret);
+  } catch (error) {
+    if (error.name === 'TokenExpiredError' || error.name === 'JsonWebTokenError' || error.name === 'NotBeforeError') {
+      throw new AppError(401, 'INVALID_SESSION', 'Session expirée ou invalide. Veuillez vous reconnecter.');
+    }
+    throw error;
+  }
   const admin = await Administrator.findById(payload.sub);
   if (!admin?.active) throw new AppError(401, 'INVALID_SESSION', 'Session invalide');
   if (admin.passwordChangedAt && payload.iat * 1000 < new Date(admin.passwordChangedAt).getTime()) throw new AppError(401, 'SESSION_EXPIRED', 'Reconnectez-vous après le changement de mot de passe');
