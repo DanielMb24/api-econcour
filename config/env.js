@@ -11,6 +11,8 @@ const env = {
   corsOrigins: (process.env.CORS_ORIGINS || 'https://econcour.vercel.app,https://gabonconcours.vercel.app,http://localhost:8001,http://localhost:5173,http://localhost:3000').split(',').map(v => v.trim().replace(/\/$/, '')).filter(Boolean),
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB || 10) * 1024 * 1024,
   storagePath: process.env.PRIVATE_STORAGE_PATH || path.join(__dirname, '..', 'storage', 'private'),
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  openaiModel: process.env.OPENAI_DOCUMENT_MODEL || 'gpt-4o-mini',
 };
 
 if (!['mysql', 'mongodb'].includes(env.databaseDriver)) throw new Error('DATABASE_DRIVER doit valoir mysql ou mongodb');
