@@ -144,6 +144,27 @@ router.get('/document-requirements/:id/example', asyncHandler(async (req, res) =
   if (!match) throw new AppError(500, 'INVALID_EXAMPLE_DOCUMENT', 'Document modèle illisible');
   res.type(match[1]).set('Content-Disposition', `inline; filename="${String(requirement.exampleOriginalName || 'exemple').replace(/["\r\n]/g, '_')}"`).send(Buffer.from(match[2], 'base64'));
 }));
+router.post('/admin/ai/chat', authenticate, requirePermission('manage_applications'), asyncHandler(async (req, res) => {
+  if (!env.openaiApiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'OPENAI_API_KEY n’est pas configurée');
+  const contest = await Contest.findOne(contestFilter(req.body.contestId)).populate('establishmentId').lean();
+  if (!contest) throw new AppError(404, 'CONTEST_NOT_FOUND', 'Concours introuvable');
+  assertContestAccess(req.admin, contest);
+  const requirements = await DocumentRequirement.find({ contestId: contest._id, active: true }).sort({ createdAt: 1 }).lean();
+  const history = Array.isArray(req.body.history) ? req.body.history.slice(-8) : [];
+  const message = String(req.body.message || '').trim();
+  if (!message) throw new AppError(422, 'AI_MESSAGE_REQUIRED', 'Votre message est vide');
+  const context = requirements.map(item => ({ nom: item.name, description: item.description || '', validation: item.validationInstructions || '', rejet: item.rejectionInstructions || '', modele: item.exampleOriginalName || null }));
+  const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+    model: env.openaiModel,
+    temperature: 0.2,
+    messages: [
+      { role: 'system', content: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` },
+      ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role, content: String(item.content || '').slice(0, 4000) })),
+      { role: 'user', content: message }
+    ]
+  }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+  ok(res, { answer: String(response.data?.choices?.[0]?.message?.content || 'Je n’ai pas pu produire de réponse.').slice(0, 6000) }, 'Réponse IA générée');
+}));
 router.delete('/concours/:id',authenticate,requireSuperAdmin,asyncHandler(async(req,res)=>{const item=await Contest.findOneAndUpdate(contestFilter(req.params.id),{$set:{status:'archived'}},{new:true});if(!item)throw new AppError(404,'CONTEST_NOT_FOUND','Concours introuvable');ok(res,{id:String(item._id),status:item.status},'Concours archivé');}));
 router.get('/filieres', asyncHandler(async (_req,res)=>ok(res,(await Program.find().lean()).map(p=>({id:p.legacyId||String(p._id),_id:p._id,nomfil:p.name,description:p.description,niveau_id:p.educationLevelId})),'Filières chargées')));
 const contestProgramView = link => ({ id: String(link._id), concours_id: link.contestId?.legacyId || String(link.contestId?._id || link.contestId), filiere_id: link.programId?.legacyId || String(link.programId?._id || link.programId), nomfil: link.programId?.name || '', niveau_id: link.programId?.educationLevelId?.legacyId || link.programId?.educationLevelId?._id, niveau_nomniv: link.programId?.educationLevelId?.name || '', places_disponibles: link.capacity || 0, active: link.active !== false });
