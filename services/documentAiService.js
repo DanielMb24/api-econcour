@@ -1,5 +1,4 @@
 const axios = require('axios');
-const { PDFParse } = require('pdf-parse');
 const env = require('../config/env');
 const { ApplicationDocument, DocumentRequirement, Application, Administrator, Notification } = require('../models/mongo');
 
@@ -13,8 +12,8 @@ const extractJson = content => JSON.parse(String(content || '').trim().replace(/
 const buildPrompt = (document, requirement) => `Tu es un assistant de pre-verification documentaire. Analyse uniquement le fichier fourni. Ne prends jamais la decision administrative finale sans regle explicite. Retourne exclusivement un JSON valide avec les cles recommendation (approve, reject ou review), confidence (nombre entre 0 et 1) et reason (phrase courte en francais). Type : "${document.type}". Description : "${requirement?.description || 'Aucune'}". Consignes de validation : "${requirement?.validationInstructions || 'Verifier la lisibilite, le type et les informations attendues.'}". Regles de rejet : "${requirement?.rejectionInstructions || 'Rejeter si le document est illisible, incomplet, du mauvais type ou non conforme.'}". En cas de doute, choisis review.`;
 
 async function analyzeDocument(documentId) {
-  if (!env.openaiApiKey) {
-    await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'disabled', aiError: 'OPENAI_API_KEY non configuree' } });
+  if (!env.geminiApiKey) {
+    await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'disabled', aiError: 'GEMINI_API_KEY non configuree' } });
     return;
   }
   const document = await ApplicationDocument.findById(documentId).lean();
@@ -26,22 +25,37 @@ async function analyzeDocument(documentId) {
   const data = parseDataUrl(document.contentData);
   if (!data) throw new Error('Contenu du document indisponible');
   await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'running' }, $unset: { aiError: 1 } });
-  const content = [{ type: 'text', text: buildPrompt(document, requirement) }];
-  if (data.mimeType.startsWith('image/')) content.push({ type: 'image_url', image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail: 'high' } });
-  else {
-    const parser = new PDFParse({ data: Buffer.from(data.base64, 'base64') });
-    let extractedText = '';
-    try { extractedText = String((await parser.getText()).text || '').trim(); } finally { await parser.destroy(); }
-    content.push({ type: 'text', text: extractedText ? `Texte extrait du PDF "${document.originalName || 'document.pdf'}" :\n${extractedText.slice(0, 30000)}` : `Le PDF "${document.originalName || 'document.pdf'}" ne contient pas de texte extractible. Choisis review.` });
-  }
   try {
-    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: env.openaiModel,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content }]
-    }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
-    const result = extractJson(response.data?.choices?.[0]?.message?.content);
+    const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.geminiModel)}:generateContent`, {
+      contents: [{ role: 'user', parts: [
+        { text: buildPrompt(document, requirement) },
+        { inlineData: { mimeType: data.mimeType, data: data.base64 } }
+      ] }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            recommendation: { type: 'STRING', enum: ['approve', 'reject', 'review'] },
+            confidence: { type: 'NUMBER' },
+            reason: { type: 'STRING' }
+          },
+          required: ['recommendation', 'confidence', 'reason']
+        }
+      }
+    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 60000 });
+    const candidate = response.data?.candidates?.[0];
+    if (candidate?.finishReason !== 'STOP') throw new Error('Gemini : analyse bloquee ou incomplete');
+    const content = candidate.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('');
+    if (!content) throw new Error('Gemini : reponse vide');
+    const result = extractJson(content);
+    if (!result || !['approve', 'reject', 'review'].includes(result.recommendation)
+      || typeof result.confidence !== 'number' || !Number.isFinite(result.confidence)
+      || result.confidence < 0 || result.confidence > 1
+      || typeof result.reason !== 'string' || !result.reason.trim()) {
+      throw new Error('Gemini : resultat documentaire invalide');
+    }
     const recommendation = ['approve', 'reject', 'review'].includes(result.recommendation) ? result.recommendation : 'review';
     const confidence = Math.min(1, Math.max(0, Number(result.confidence) || 0));
     const reason = String(result.reason || 'Verification administrative requise').slice(0, 500);

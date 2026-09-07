@@ -146,7 +146,7 @@ router.get('/document-requirements/:id/example', asyncHandler(async (req, res) =
   res.type(match[1]).set('Content-Disposition', `inline; filename="${String(requirement.exampleOriginalName || 'exemple').replace(/["\r\n]/g, '_')}"`).send(Buffer.from(match[2], 'base64'));
 }));
 router.post('/admin/ai/chat', authenticate, requirePermission('manage_applications'), asyncHandler(async (req, res) => {
-  if (!env.openaiApiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'OPENAI_API_KEY n’est pas configurée');
+  if (!env.geminiApiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'GEMINI_API_KEY n’est pas configurée');
   const contest = await Contest.findOne(contestFilter(req.body.contestId)).populate('establishmentId').lean();
   if (!contest) throw new AppError(404, 'CONTEST_NOT_FOUND', 'Concours introuvable');
   assertContestAccess(req.admin, contest);
@@ -157,24 +157,26 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
   const context = requirements.map(item => ({ nom: item.name, description: item.description || '', validation: item.validationInstructions || '', rejet: item.rejectionInstructions || '', modele: item.exampleOriginalName || null }));
   let response;
   try {
-    response = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: env.openaiModel,
-      temperature: 0.2,
-      messages: [
-        { role: 'system', content: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` },
-        ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role, content: String(item.content || '').slice(0, 4000) })),
-        { role: 'user', content: message }
+    response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.geminiModel)}:generateContent`, {
+      generationConfig: { temperature: 0.2 },
+      systemInstruction: { parts: [{ text: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` }] },
+      contents: [
+        ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(item.content || '').slice(0, 4000) }] })),
+        { role: 'user', parts: [{ text: message }] }
       ]
-    }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 });
+    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 30000 });
   } catch (error) {
     const providerStatus = error.response?.status;
     const providerCode = error.response?.data?.error?.code || error.code || 'UNKNOWN_PROVIDER_ERROR';
     const providerMessage = error.response?.data?.error?.message || error.message;
-    const status = providerStatus === 401 ? 503 : providerStatus === 429 ? 429 : 502;
-    console.error(JSON.stringify({ level: 'error', code: 'AI_PROVIDER_ERROR', providerStatus, providerCode, model: env.openaiModel, message: providerMessage }));
+    const status = [400, 401, 403].includes(providerStatus) ? 503 : providerStatus === 429 ? 429 : 502;
+    console.error(JSON.stringify({ level: 'error', code: 'AI_PROVIDER_ERROR', providerStatus, providerCode, model: env.geminiModel, message: providerMessage }));
     throw new AppError(status, 'AI_PROVIDER_ERROR', `Le service IA a refusé la demande (${providerCode}) : ${String(providerMessage).slice(0, 300)}`);
   }
-  ok(res, { answer: String(response.data?.choices?.[0]?.message?.content || 'Je n’ai pas pu produire de réponse.').slice(0, 6000) }, 'Réponse IA générée');
+  const candidate = response.data?.candidates?.[0];
+  const answer = candidate?.content?.parts?.filter(part => !part.thought).map(part => part.text || '').join('').trim();
+  if (candidate?.finishReason !== 'STOP' || !answer) throw new AppError(502, 'AI_EMPTY_RESPONSE', 'Gemini n’a pas pu produire de réponse complète. Réessayez.');
+  ok(res, { answer: answer.slice(0, 6000) }, 'Réponse IA générée');
 }));
 router.delete('/concours/:id',authenticate,requireSuperAdmin,asyncHandler(async(req,res)=>{const item=await Contest.findOneAndUpdate(contestFilter(req.params.id),{$set:{status:'archived'}},{new:true});if(!item)throw new AppError(404,'CONTEST_NOT_FOUND','Concours introuvable');ok(res,{id:String(item._id),status:item.status},'Concours archivé');}));
 router.get('/filieres', asyncHandler(async (_req,res)=>ok(res,(await Program.find().lean()).map(p=>({id:p.legacyId||String(p._id),_id:p._id,nomfil:p.name,description:p.description,niveau_id:p.educationLevelId})),'Filières chargées')));
