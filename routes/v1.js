@@ -154,15 +154,23 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
   const message = String(req.body.message || '').trim();
   if (!message) throw new AppError(422, 'AI_MESSAGE_REQUIRED', 'Votre message est vide');
   const context = requirements.map(item => ({ nom: item.name, description: item.description || '', validation: item.validationInstructions || '', rejet: item.rejectionInstructions || '', modele: item.exampleOriginalName || null }));
-  const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-    model: env.openaiModel,
-    temperature: 0.2,
-    messages: [
-      { role: 'system', content: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` },
-      ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role, content: String(item.content || '').slice(0, 4000) })),
-      { role: 'user', content: message }
-    ]
-  }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+  let response;
+  try {
+    response = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: env.openaiModel,
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` },
+        ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role, content: String(item.content || '').slice(0, 4000) })),
+        { role: 'user', content: message }
+      ]
+    }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+  } catch (error) {
+    const providerStatus = error.response?.status;
+    const providerMessage = error.response?.data?.error?.message || error.message;
+    const status = providerStatus === 401 ? 503 : providerStatus === 429 ? 429 : 502;
+    throw new AppError(status, 'AI_PROVIDER_ERROR', `Le service IA a refusé la demande : ${String(providerMessage).slice(0, 300)}`);
+  }
   ok(res, { answer: String(response.data?.choices?.[0]?.message?.content || 'Je n’ai pas pu produire de réponse.').slice(0, 6000) }, 'Réponse IA générée');
 }));
 router.delete('/concours/:id',authenticate,requireSuperAdmin,asyncHandler(async(req,res)=>{const item=await Contest.findOneAndUpdate(contestFilter(req.params.id),{$set:{status:'archived'}},{new:true});if(!item)throw new AppError(404,'CONTEST_NOT_FOUND','Concours introuvable');ok(res,{id:String(item._id),status:item.status},'Concours archivé');}));
