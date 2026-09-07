@@ -164,8 +164,9 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
         ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(item.content || '').slice(0, 4000) }] })),
         { role: 'user', parts: [{ text: message }] }
       ]
-    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 30000 });
+    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 90000 });
   } catch (error) {
+    if (['ECONNABORTED', 'ETIMEDOUT'].includes(error.code)) throw new AppError(504, 'AI_TIMEOUT', 'Gemini met trop de temps à répondre. Veuillez réessayer.');
     const providerStatus = error.response?.status;
     const providerCode = error.response?.data?.error?.code || error.code || 'UNKNOWN_PROVIDER_ERROR';
     const providerMessage = error.response?.data?.error?.message || error.message;

@@ -1,9 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
-    { "source": "/", "destination": "/index.html", "permanent": false }
+    {
+      "source": "/",
+      "destination": "/index.html",
+      "permanent": false
+    }
   ],
   "rewrites": [
-    { "source": "/api/v1/(.*)", "destination": "/api" }
-  ]
+    {
+      "source": "/api/v1/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 120
+    }
+  }
 }

@@ -12,3 +12,7 @@ Sur Vercel, ajouter ces variables au projet API puis redeployer. Le chat adminis
 Le service transmet les images et PDF a Gemini et attend une recommandation JSON. Le traitement existant applique la recommandation et envoie les notifications. Une reponse bloquee, incomplete ou invalide marque l'analyse `failed` sans valider le document.
 
 Reference API : https://ai.google.dev/api/generate-content
+
+Le chat attend Gemini pendant 90 secondes. La fonction Vercel `api/index.js` dispose de 120 secondes et le navigateur attend 130 secondes pour cet appel. Redeployer les projets API et frontend apres modification. Si le projet Vercel utilise un autre point d'entree, verifier que sa duree maximale est egalement de 120 secondes dans les reglages du projet.
+
+Configuration Vercel : https://vercel.com/docs/functions/configuring-functions/duration
