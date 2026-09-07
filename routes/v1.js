@@ -108,9 +108,42 @@ const syncDocumentRequirements = async (contestId, value) => {
   await DocumentRequirement.updateMany({contestId},{$set:{active:false}});
   for(const requirement of requirements)await DocumentRequirement.findOneAndUpdate({contestId,programId:null,code:requirement.code},{$set:requirement,$setOnInsert:{contestId}},{upsert:true,new:true,runValidators:true});
 };
-const requirementView = item => ({id:String(item._id),code:item.code,nom:item.name,description:item.description||'',instructions_validation:item.validationInstructions||'',instructions_rejet:item.rejectionInstructions||'',obligatoire:item.required,acceptedMimeTypes:item.acceptedMimeTypes||[],maxSizeBytes:item.maxSizeBytes});
+const requirementView = item => ({id:String(item._id),code:item.code,nom:item.name,description:item.description||'',instructions_validation:item.validationInstructions||'',instructions_rejet:item.rejectionInstructions||'',obligatoire:item.required,acceptedMimeTypes:item.acceptedMimeTypes||[],maxSizeBytes:item.maxSizeBytes,exemple_document:item.exampleOriginalName?{nom_fichier:item.exampleOriginalName,mime_type:item.exampleMimeType,taille:item.exampleSize}:null});
 router.post('/concours',authenticate,requireSuperAdmin,required('libcnc','etablissement_id','niveau_id','documents_requis'),asyncHandler(async(req,res)=>{const requirements=parseDocumentRequirements(req.body.documents_requis);if(!requirements?.length)throw new AppError(422,'DOCUMENT_REQUIREMENTS_REQUIRED','Définissez au moins un document pour ce concours');const input=await contestInput(req.body);input.slug=`${String(input.title).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')}-${crypto.randomBytes(4).toString('hex')}`;const item=await Contest.create(input);await syncDocumentRequirements(item._id,requirements);const result=toLegacyContest(await Contest.findById(item._id).populate('establishmentId educationLevelId programIds').lean());result.documents_requis=(await DocumentRequirement.find({contestId:item._id,active:true}).sort({createdAt:1}).lean()).map(requirementView);ok(res,result,'Concours créé',201);}));
 router.put('/concours/:id',authenticate,requirePermission('manage_applications'),asyncHandler(async(req,res)=>{const current=await Contest.findOne(contestFilter(req.params.id));if(!current)throw new AppError(404,'CONTEST_NOT_FOUND','Concours introuvable');assertContestAccess(req.admin,current);assertContestWritable(current);const update=await contestInput(req.body);if(req.admin.role!=='super_admin'){delete update.establishmentId;delete update.status;}const item=await Contest.findByIdAndUpdate(current._id,{$set:update},{new:true,runValidators:true}).populate('establishmentId educationLevelId programIds').lean();await syncDocumentRequirements(item._id,req.body.documents_requis);const result=toLegacyContest(item);result.documents_requis=(await DocumentRequirement.find({contestId:item._id,active:true}).sort({createdAt:1}).lean()).map(requirementView);ok(res,result,'Concours modifié');}));
+router.put('/document-requirements/:id/example', authenticate, requirePermission('manage_applications'), documentUpload.single('example'), validateUploadedFiles, asyncHandler(async (req, res) => {
+  const requirement = await DocumentRequirement.findById(req.params.id).populate('contestId');
+  if (!requirement) throw new AppError(404, 'DOCUMENT_REQUIREMENT_NOT_FOUND', 'Exigence documentaire introuvable');
+  assertContestAccess(req.admin, requirement.contestId);
+  assertContestWritable(requirement.contestId);
+  if (!req.file) throw new AppError(422, 'EXAMPLE_DOCUMENT_REQUIRED', 'Un document modèle est requis');
+  requirement.exampleStorageKey = `document-examples/${requirement.contestId._id}/${crypto.randomUUID()}`;
+  requirement.exampleContentData = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+  requirement.exampleOriginalName = req.file.originalname;
+  requirement.exampleMimeType = req.file.mimetype;
+  requirement.exampleSize = req.file.size;
+  await requirement.save();
+  ok(res, requirementView(requirement), 'Document modèle enregistré');
+}));
+router.delete('/document-requirements/:id/example', authenticate, requirePermission('manage_applications'), asyncHandler(async (req, res) => {
+  const requirement = await DocumentRequirement.findById(req.params.id).populate('contestId');
+  if (!requirement) throw new AppError(404, 'DOCUMENT_REQUIREMENT_NOT_FOUND', 'Exigence documentaire introuvable');
+  assertContestAccess(req.admin, requirement.contestId);
+  requirement.exampleStorageKey = undefined;
+  requirement.exampleContentData = undefined;
+  requirement.exampleOriginalName = undefined;
+  requirement.exampleMimeType = undefined;
+  requirement.exampleSize = undefined;
+  await requirement.save();
+  ok(res, requirementView(requirement), 'Document modèle supprimé');
+}));
+router.get('/document-requirements/:id/example', asyncHandler(async (req, res) => {
+  const requirement = await DocumentRequirement.findById(req.params.id).select('exampleContentData exampleOriginalName exampleMimeType');
+  if (!requirement?.exampleContentData) throw new AppError(404, 'EXAMPLE_DOCUMENT_NOT_FOUND', 'Document modèle introuvable');
+  const match = /^data:([^;]+);base64,(.*)$/.exec(requirement.exampleContentData);
+  if (!match) throw new AppError(500, 'INVALID_EXAMPLE_DOCUMENT', 'Document modèle illisible');
+  res.type(match[1]).set('Content-Disposition', `inline; filename="${String(requirement.exampleOriginalName || 'exemple').replace(/["\r\n]/g, '_')}"`).send(Buffer.from(match[2], 'base64'));
+}));
 router.delete('/concours/:id',authenticate,requireSuperAdmin,asyncHandler(async(req,res)=>{const item=await Contest.findOneAndUpdate(contestFilter(req.params.id),{$set:{status:'archived'}},{new:true});if(!item)throw new AppError(404,'CONTEST_NOT_FOUND','Concours introuvable');ok(res,{id:String(item._id),status:item.status},'Concours archivé');}));
 router.get('/filieres', asyncHandler(async (_req,res)=>ok(res,(await Program.find().lean()).map(p=>({id:p.legacyId||String(p._id),_id:p._id,nomfil:p.name,description:p.description,niveau_id:p.educationLevelId})),'Filières chargées')));
 const contestProgramView = link => ({ id: String(link._id), concours_id: link.contestId?.legacyId || String(link.contestId?._id || link.contestId), filiere_id: link.programId?.legacyId || String(link.programId?._id || link.programId), nomfil: link.programId?.name || '', niveau_id: link.programId?.educationLevelId?.legacyId || link.programId?.educationLevelId?._id, niveau_nomniv: link.programId?.educationLevelId?.name || '', places_disponibles: link.capacity || 0, active: link.active !== false });
