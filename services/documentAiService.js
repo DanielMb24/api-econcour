@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { PDFParse } = require('pdf-parse');
 const env = require('../config/env');
 const { ApplicationDocument, DocumentRequirement, Application, Administrator, Notification } = require('../models/mongo');
 
@@ -27,7 +28,12 @@ async function analyzeDocument(documentId) {
   await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'running' }, $unset: { aiError: 1 } });
   const content = [{ type: 'text', text: buildPrompt(document, requirement) }];
   if (data.mimeType.startsWith('image/')) content.push({ type: 'image_url', image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail: 'high' } });
-  else content.push({ type: 'text', text: `PDF "${document.originalName || 'document.pdf'}" : recommande review si le fichier ne peut pas etre inspecte visuellement.` });
+  else {
+    const parser = new PDFParse({ data: Buffer.from(data.base64, 'base64') });
+    let extractedText = '';
+    try { extractedText = String((await parser.getText()).text || '').trim(); } finally { await parser.destroy(); }
+    content.push({ type: 'text', text: extractedText ? `Texte extrait du PDF "${document.originalName || 'document.pdf'}" :\n${extractedText.slice(0, 30000)}` : `Le PDF "${document.originalName || 'document.pdf'}" ne contient pas de texte extractible. Choisis review.` });
+  }
   try {
     const response = await axios.post('https://api.openai.com/v1/chat/completions', {
       model: env.openaiModel,
