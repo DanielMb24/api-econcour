@@ -10,7 +10,7 @@ function setup(candidate) {
   const context = {
     router: { post: (...args) => { handler = args.at(-1); } },
     authenticate: () => {}, requirePermission: () => () => {}, asyncHandler: fn => fn,
-    env: { geminiApiKey: 'test', geminiModel: 'gemini-2.5-flash' },
+    env: { geminiApiKey: 'test', geminiModel: 'gemini-3.6-flash' },
     Contest: { findOne: () => ({ populate: () => ({ lean: async () => ({ _id: 'contest', title: 'Concours' }) }) }) },
     DocumentRequirement: { find: () => ({ sort: () => ({ lean: async () => [] }) }) },
     contestFilter: id => id, assertContestAccess: () => {},

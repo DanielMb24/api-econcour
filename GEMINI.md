@@ -4,7 +4,7 @@ Dans `.env` (ou les variables du serveur de production), configurer :
 
 ```dotenv
 GEMINI_API_KEY=votre-cle
-GEMINI_DOCUMENT_MODEL=gemini-2.5-flash
+GEMINI_DOCUMENT_MODEL=gemini-3.6-flash
 ```
 
 Sur Vercel, ajouter ces variables au projet API puis redeployer. Le chat administrateur et le controle documentaire utilisent Gemini. Aucun secret Gemini ne doit etre configure dans le projet frontend. La cle reste exclusivement sur le serveur, sans prefixe `VITE_`. Sans cle, les analyses sont marquees `disabled`.

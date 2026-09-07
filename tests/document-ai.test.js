@@ -20,7 +20,7 @@ function setup({ key = 'test-key', mimeType = 'application/pdf', candidate, apiE
   const context = {
     module: { exports: {} }, console, setImmediate,
     require: name => {
-      if (name === '../config/env') return { geminiApiKey: key, geminiModel: 'gemini-2.5-flash' };
+      if (name === '../config/env') return { geminiApiKey: key, geminiModel: 'gemini-3.6-flash' };
       if (name === '../models/mongo') return models;
       if (name === 'axios') return { post: async (...args) => {
         requests.push(args);

@@ -12,7 +12,7 @@ const env = {
   maxUploadBytes: Number(process.env.MAX_UPLOAD_MB || 10) * 1024 * 1024,
   storagePath: process.env.PRIVATE_STORAGE_PATH || path.join(__dirname, '..', 'storage', 'private'),
   geminiApiKey: String(process.env.GEMINI_API_KEY || '').trim().replace(/^['"]|['"]$/g, ''),
-  geminiModel: String(process.env.GEMINI_DOCUMENT_MODEL || 'gemini-2.5-flash').trim().replace(/^['"]|['"]$/g, ''),
+  geminiModel: String(process.env.GEMINI_DOCUMENT_MODEL || 'gemini-3.6-flash').trim().replace(/^['"]|['"]$/g, ''),
 };
 
 if (!['mysql', 'mongodb'].includes(env.databaseDriver)) throw new Error('DATABASE_DRIVER doit valoir mysql ou mongodb');
