@@ -164,12 +164,14 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
         ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role, content: String(item.content || '').slice(0, 4000) })),
         { role: 'user', content: message }
       ]
-    }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 60000 });
+    }, { headers: { Authorization: `Bearer ${env.openaiApiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 });
   } catch (error) {
     const providerStatus = error.response?.status;
+    const providerCode = error.response?.data?.error?.code || error.code || 'UNKNOWN_PROVIDER_ERROR';
     const providerMessage = error.response?.data?.error?.message || error.message;
     const status = providerStatus === 401 ? 503 : providerStatus === 429 ? 429 : 502;
-    throw new AppError(status, 'AI_PROVIDER_ERROR', `Le service IA a refusé la demande : ${String(providerMessage).slice(0, 300)}`);
+    console.error(JSON.stringify({ level: 'error', code: 'AI_PROVIDER_ERROR', providerStatus, providerCode, model: env.openaiModel, message: providerMessage }));
+    throw new AppError(status, 'AI_PROVIDER_ERROR', `Le service IA a refusé la demande (${providerCode}) : ${String(providerMessage).slice(0, 300)}`);
   }
   ok(res, { answer: String(response.data?.choices?.[0]?.message?.content || 'Je n’ai pas pu produire de réponse.').slice(0, 6000) }, 'Réponse IA générée');
 }));
