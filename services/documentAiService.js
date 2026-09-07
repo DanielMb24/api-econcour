@@ -1,4 +1,10 @@
 const axios = require('axios');
+const { randomUUID } = require('crypto');
+const eligibleForAnalysis = () => ({ status: 'uploaded', $or: [
+  { aiStatus: { $in: ['pending', 'disabled', 'failed', null] } },
+  { aiStatus: 'running', aiStartedAt: { $lt: new Date(Date.now() - 5 * 60 * 1000) } },
+  { aiStatus: 'running', aiStartedAt: { $exists: false }, updatedAt: { $lt: new Date(Date.now() - 5 * 60 * 1000) } }
+] });
 const env = require('../config/env');
 const { ApplicationDocument, DocumentRequirement, Application, Administrator, Notification } = require('../models/mongo');
 
@@ -16,16 +22,22 @@ async function analyzeDocument(documentId) {
     await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'disabled', aiError: 'GEMINI_API_KEY non configuree' } });
     return;
   }
-  const document = await ApplicationDocument.findById(documentId).lean();
-  if (!document) return;
-  const [requirement, application] = await Promise.all([
-    document.requirementId ? DocumentRequirement.findById(document.requirementId).lean() : null,
-    Application.findById(document.applicationId).populate('contestId').lean()
-  ]);
-  const data = parseDataUrl(document.contentData);
-  if (!data) throw new Error('Contenu du document indisponible');
-  await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'running' }, $unset: { aiError: 1 } });
+  const aiRunToken = randomUUID();
+  const document = await ApplicationDocument.findOneAndUpdate(
+    { _id: documentId, ...eligibleForAnalysis() },
+    { $set: { aiStatus: 'running', aiRunToken, aiStartedAt: new Date() }, $unset: { aiError: 1 } },
+    { new: true }
+  ).lean();
+  if (!document) return { skipped: true };
+  const ownership = { _id: documentId, aiRunToken, aiStatus: 'running', status: 'uploaded' };
   try {
+    const [requirement, application] = await Promise.all([
+      document.requirementId ? DocumentRequirement.findById(document.requirementId).lean() : null,
+      Application.findById(document.applicationId).populate('contestId').lean()
+    ]);
+    const data = parseDataUrl(document.contentData);
+    if (!data) throw new Error('Contenu du document indisponible');
+
     const response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.geminiModel)}:generateContent`, {
       contents: [{ role: 'user', parts: [
         { text: buildPrompt(document, requirement) },
@@ -60,8 +72,9 @@ async function analyzeDocument(documentId) {
     const confidence = Math.min(1, Math.max(0, Number(result.confidence) || 0));
     const reason = String(result.reason || 'Verification administrative requise').slice(0, 500);
     const status = recommendation === 'approve' ? 'approved' : recommendation === 'reject' ? 'rejected' : 'uploaded';
-    await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'completed', aiRecommendation: recommendation, aiConfidence: confidence, aiReason: reason, aiAnalyzedAt: new Date(), status, ...(status === 'rejected' ? { rejectionReason: `Rejet automatique IA : ${reason}` } : { rejectionReason: undefined }) } }, { new: true });
-    if (!application) return;
+    const saved = await ApplicationDocument.findOneAndUpdate(ownership, { $set: { aiStatus: 'completed', aiRecommendation: recommendation, aiConfidence: confidence, aiReason: reason, aiAnalyzedAt: new Date(), status, ...(status === 'rejected' ? { rejectionReason: `Rejet automatique IA : ${reason}` } : { rejectionReason: undefined }) } }, { new: true });
+    if (!saved) return { skipped: true };
+    if (!application) return { completed: true };
     try {
       const label = document.type || document.originalName || 'document';
       await Notification.create({ candidateId: application.candidateId, applicationId: application._id, legacyNupcan: application.nupcan, title: recommendation === 'approve' ? 'Document valide automatiquement' : recommendation === 'reject' ? 'Document rejete automatiquement' : 'Verification humaine requise', body: recommendation === 'approve' ? `Votre document « ${label} » a ete valide automatiquement.` : recommendation === 'reject' ? `Votre document « ${label} » a ete rejete automatiquement. Motif : ${reason}` : `Votre document « ${label} » a ete analyse. Une verification humaine est requise.`, channel: 'in_app' });
@@ -74,7 +87,7 @@ async function analyzeDocument(documentId) {
       console.error(JSON.stringify({ level: 'error', code: 'DOCUMENT_AI_NOTIFICATION_FAILED', documentId: String(documentId), message: notificationError.message }));
     }
   } catch (error) {
-    await ApplicationDocument.findByIdAndUpdate(documentId, { $set: { aiStatus: 'failed', aiError: String(error.response?.data?.error?.message || error.message).slice(0, 500), aiAnalyzedAt: new Date() } });
+    await ApplicationDocument.findOneAndUpdate(ownership, { $set: { aiStatus: 'failed', aiError: String(error.response?.data?.error?.message || error.message).slice(0, 500), aiAnalyzedAt: new Date() } });
     throw error;
   }
 }
@@ -83,4 +96,4 @@ function queueDocumentAnalysis(documentId) {
   setImmediate(() => analyzeDocument(documentId).catch(error => console.error(JSON.stringify({ level: 'error', code: 'DOCUMENT_AI_ANALYSIS_FAILED', documentId: String(documentId), message: error.message }))));
 }
 
-module.exports = { analyzeDocument, queueDocumentAnalysis };
+module.exports = { analyzeDocument, queueDocumentAnalysis, eligibleForAnalysis };

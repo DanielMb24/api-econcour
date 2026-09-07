@@ -4,12 +4,15 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function setup({ key = 'test-key', mimeType = 'application/pdf', candidate, apiError } = {}) {
+function setup({ key = 'test-key', mimeType = 'application/pdf', candidate, apiError, claimed = true } = {}) {
   const updates = [];
   const requests = [];
   const models = {
     ApplicationDocument: {
-      findById: () => ({ lean: async () => ({ type: 'Diplome', contentData: `data:${mimeType};base64,dGVzdA==`, applicationId: 'application' }) }),
+      findOneAndUpdate: (filter, update) => {
+        updates.push(update.$set);
+        return { lean: async () => claimed ? ({ type: 'Diplome', contentData: `data:${mimeType};base64,dGVzdA==`, applicationId: 'application' }) : null };
+      },
       findByIdAndUpdate: (id, update) => {
         updates.push(update.$set);
         return { lean: async () => ({ _id: id }) };
@@ -20,6 +23,7 @@ function setup({ key = 'test-key', mimeType = 'application/pdf', candidate, apiE
   const context = {
     module: { exports: {} }, console, setImmediate,
     require: name => {
+      if (name === 'crypto') return { randomUUID: () => 'test-run' };
       if (name === '../config/env') return { geminiApiKey: key, geminiModel: 'gemini-3.6-flash' };
       if (name === '../models/mongo') return models;
       if (name === 'axios') return { post: async (...args) => {
@@ -74,4 +78,11 @@ test('une erreur API est enregistree', async () => {
   const state = setup({ apiError: new Error('API unavailable') });
   await assert.rejects(state.analyze('document'), /API unavailable/);
   assert.equal(state.updates.at(-1).aiStatus, 'failed');
+});
+
+test('une analyse deja reservee ne declenche pas un second appel Gemini', async () => {
+  const state = setup({ claimed: false });
+  const result = await state.analyze('document');
+  assert.equal(result.skipped, true);
+  assert.equal(state.requests.length, 0);
 });

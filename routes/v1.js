@@ -145,6 +145,24 @@ router.get('/document-requirements/:id/example', asyncHandler(async (req, res) =
   if (!match) throw new AppError(500, 'INVALID_EXAMPLE_DOCUMENT', 'Document modèle illisible');
   res.type(match[1]).set('Content-Disposition', `inline; filename="${String(requirement.exampleOriginalName || 'exemple').replace(/["\r\n]/g, '_')}"`).send(Buffer.from(match[2], 'base64'));
 }));
+router.post('/admin/ai/backfill', authenticate, requirePermission('validate_documents'), asyncHandler(async (req, res) => {
+  if (!env.geminiApiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'GEMINI_API_KEY n’est pas configurée');
+  if (!req.body.contestId) throw new AppError(422, 'CONTEST_REQUIRED', 'Sélectionnez un concours');
+  const contest = await Contest.findOne(contestFilter(req.body.contestId)).lean();
+  if (!contest) throw new AppError(404, 'CONTEST_NOT_FOUND', 'Concours introuvable');
+  assertContestAccess(req.admin, contest);
+  assertContestWritable(contest);
+  const after = req.body.after || null;
+  const before = req.body.before ? new Date(req.body.before) : new Date();
+  if ((after && (typeof after !== 'string' || !/^[a-f0-9]{24}$/i.test(after))) || !Number.isFinite(before.getTime()) || before > new Date()) throw new AppError(422, 'INVALID_AI_CURSOR', 'Paramètres de reprise invalides');
+  try {
+    const result = await require('../services/documentAiBackfillService').processNextDocument(contest._id, after, before);
+    ok(res, { ...result, before: before.toISOString() }, result.done ? 'Traitement terminé' : 'Document traité');
+  } catch (error) {
+    const status = error.response?.status === 429 ? 429 : 502;
+    throw new AppError(status, 'AI_BACKFILL_INTERRUPTED', 'Traitement interrompu : Gemini est indisponible. Vous pouvez reprendre ultérieurement.');
+  }
+}));
 router.post('/admin/ai/chat', authenticate, requirePermission('manage_applications'), asyncHandler(async (req, res) => {
   if (!env.geminiApiKey) throw new AppError(503, 'AI_NOT_CONFIGURED', 'GEMINI_API_KEY n’est pas configurée');
   const contest = await Contest.findOne(contestFilter(req.body.contestId)).populate('establishmentId').lean();
