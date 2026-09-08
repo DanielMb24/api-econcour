@@ -1,0 +1,50 @@
+version: 2
+
+updates:
+  # ============================================
+  # NPM : Mises à jour des dépendances
+  # ============================================
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+    open-pull-requests-limit: 10
+    pull-request-branch-name:
+      separator: "/"
+    reviewers:
+      - DanielMb24
+    labels:
+      - "🔧 dependencies"
+      - "📦 npm"
+
+  # ============================================
+  # GitHub Actions : Mises à jour des actions
+  # ============================================
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "04:00"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    labels:
+      - "🤖 github-actions"
+
+  # ============================================
+  # Docker : Mises à jour des images
+  # ============================================
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "/"
+    labels:
+      - "🐳 docker"
