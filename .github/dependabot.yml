@@ -18,11 +18,14 @@ updates:
     labels:
       - "🔧 dependencies"
       - "📦 npm"
+<<<<<<< HEAD
       - "🔧 backend"
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
       include: "scope"
+=======
+>>>>>>> 26f95a92db2317a1256c14c6cbd333e3accd6bbc
 
   # ============================================
   # GitHub Actions : Mises à jour des actions
@@ -38,10 +41,13 @@ updates:
       separator: "/"
     labels:
       - "🤖 github-actions"
+<<<<<<< HEAD
       - "🔧 backend"
     commit-message:
       prefix: "ci(actions)"
       include: "scope"
+=======
+>>>>>>> 26f95a92db2317a1256c14c6cbd333e3accd6bbc
 
   # ============================================
   # Docker : Mises à jour des images
@@ -57,7 +63,10 @@ updates:
       separator: "/"
     labels:
       - "🐳 docker"
+<<<<<<< HEAD
       - "🔧 backend"
     commit-message:
       prefix: "ci(docker)"
       include: "scope"
+=======
+>>>>>>> 26f95a92db2317a1256c14c6cbd333e3accd6bbc
