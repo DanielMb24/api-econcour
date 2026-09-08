@@ -1,22 +1,19 @@
 const nodemailer = require('nodemailer');
 
-// Configuration du transporteur email
-const smtpPort = Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || process.env.MAIL_PORT || 587);
-const smtpUser = String(process.env.SMTP_USER || process.env.EMAIL_USER || process.env.MAIL_USER || '').trim();
-const smtpPass = String(process.env.SMTP_PASS || process.env.EMAIL_PASSWORD || process.env.MAIL_PASSWORD || '').replace(/\s+/g, '');
-const emailFrom = process.env.EMAIL_FROM || (smtpUser ? `GABConcours <${smtpUser}>` : '');
-const smtpTransport = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || process.env.MAIL_HOST || 'smtp.gmail.com',
-    port: smtpPort,
-    secure: smtpPort === 465,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
-    auth: {
-        user: smtpUser,
-        pass: smtpPass
-    }
-});
+// Les paramètres MAIL_* peuvent remplacer la configuration SMTP historique.
+const smtpPort = Number(process.env.MAIL_PORT || process.env.SMTP_PORT || process.env.EMAIL_PORT || 587);
+const smtpHost = process.env.MAIL_HOST || process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp.gmail.com';
+const smtpUser = String(process.env.MAIL_USERNAME || process.env.MAIL_USER || process.env.SMTP_USER || process.env.EMAIL_USER || '').trim();
+const smtpPass = String(process.env.MAIL_PASSWORD || process.env.SMTP_PASS || process.env.EMAIL_PASSWORD || '');
+const emailFrom = process.env.MAIL_FROM_ADDRESS ? {name: process.env.MAIL_FROM_NAME || 'GabConcours', address: process.env.MAIL_FROM_ADDRESS} : process.env.EMAIL_FROM || (smtpUser ? 'GABConcours <' + smtpUser + '>' : '');
+let transportPromise;
+function getTransport() {
+    if (!transportPromise) transportPromise = (async () => {
+        const host = process.env.MAIL_FORCE_IPV4 === 'true' ? (await require('dns').promises.resolve4(smtpHost))[0] : smtpHost;
+        return nodemailer.createTransport({host, port: smtpPort, secure: smtpPort === 465 || process.env.MAIL_SECURE === 'true', tls: {servername: smtpHost}, connectionTimeout: Number(process.env.MAIL_CONNECTION_TIMEOUT || 30000), greetingTimeout: 30000, socketTimeout: 45000, auth: {user: smtpUser, pass: smtpPass}});
+    })().catch(error => {transportPromise = undefined; throw error;});
+    return transportPromise;
+}
 
 const transporter = {
     async sendMail(mailOptions) {
@@ -25,15 +22,16 @@ const transporter = {
         }
         const options = {...mailOptions, from: emailFrom};
         try {
-            return await smtpTransport.sendMail(options);
+            return await (await getTransport()).sendMail(options);
         } catch (error) {
             console.warn(JSON.stringify({level: 'warn', code: 'SMTP_FIRST_ATTEMPT_FAILED', message: error.message}));
-            return smtpTransport.sendMail(options);
+            return (await getTransport()).sendMail(options);
         }
     }
 };
 
 class EmailService {
+    async verifyConnection() { return (await getTransport()).verify(); }
     getConfigurationStatus() {
         return {
             configured: Boolean(smtpUser && smtpPass),
@@ -151,13 +149,14 @@ class EmailService {
                     <p style="margin: 5px 0;"><strong>Email :</strong> ${candidat.maican}</p>
                     <p style="margin: 5px 0;"><strong>NIPCAN (Identifiant permanent) :</strong> <span style="background: #fef3c7; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-weight: bold;">${candidat.nipcan}</span></p>
                     <p style="margin: 5px 0;"><strong>NUPCAN (Numéro de candidature) :</strong> ${candidat.nupcan}</p>
+                    ${candidat.accountCredentials ? `<p><strong>Nom d’utilisateur :</strong> ${candidat.accountCredentials.username}</p><p><strong>Mot de passe temporaire :</strong> ${candidat.accountCredentials.temporaryPassword}</p><p>Modifiez ce mot de passe dans les paramètres de votre espace candidat.</p>` : ''}
                     ${concours ? `<p style="margin: 5px 0;"><strong>Concours :</strong> ${concours.libcnc}</p>` : ''}
                 </div>
                 
                 <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; border-radius: 0 8px 8px 0;">
                     <p style="margin: 0; color: #92400e;">
                         <strong>⚠️ Important :</strong> Conservez précieusement votre <strong>NIPCAN</strong> ! 
-                        Il vous permettra de vous connecter à votre dashboard et de créer de nouvelles candidatures.
+                        Il vous permettra de retrouver vos informations lors de nouvelles candidatures. Connectez-vous avec votre email et votre mot de passe.
                     </p>
                 </div>
                 

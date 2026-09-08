@@ -7,7 +7,7 @@ test('les accès au compte et au profil NIPCAN exigent une session', async () =>
   const server = createApp().listen(0);
   try {
     const base = `http://127.0.0.1:${server.address().port}/api/v1`;
-    for (const [route, method] of [['/candidate-auth/me','GET'], ['/candidats/nip/NIP2026000001','GET'], ['/candidats/nipcan/NIP2026000001/dashboard','GET'], ['/candidats','POST'], ['/applications','POST']]) {
+    for (const [route, method] of [['/candidate-auth/me','GET'], ['/candidats/nip/NIP2026000001','GET'], ['/candidats/nipcan/NIP2026000001/dashboard','GET'], ['/applications','POST']]) {
       const response = await fetch(base + route, {method});
       assert.equal(response.status, 401, route);
       assert.equal((await response.json()).success, false);

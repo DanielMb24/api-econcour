@@ -18,10 +18,10 @@ async function authenticateCandidate(req, res, next) {
     req.candidate = candidate; req.candidateSession = session; next();
   } catch (error) {next(error);}
 }
-async function sessionResponse(res, candidate) {
+async function createCandidateSession(candidate) {
   const token = crypto.randomBytes(32).toString('hex');
   await Session.create({candidateId: candidate._id, actorType: 'candidate', tokenHash: hash(token), expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)});
-  ok(res, {token, nipcan: candidate.nipcan, prenom: candidate.firstName, nom: candidate.lastName}, 'Connexion réussie');
+  return {token, nipcan: candidate.nipcan, prenom: candidate.firstName, nom: candidate.lastName, mustChangePassword: !!candidate.mustChangePassword};
 }
 router.post('/candidate-auth/code', limiter, asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
@@ -41,6 +41,7 @@ router.post('/candidate-auth/register', limiter, asyncHandler(async (req, res) =
   const verification = await VerificationCode.findOneAndUpdate({_id: req.body.verificationId, destinationHash: hash(email), purpose: 'email_verification', consumedAt: null, attempts: {$lt: 5}, expiresAt: {$gt: new Date()}}, {$inc: {attempts: 1}}, {new: true}).select('+codeHash');
   if (!verification || verification.codeHash !== hash(req.body.code)) throw new AppError(422, 'INVALID_CODE', 'Code invalide ou expiré');
   const candidate = await Candidate.findOne({email}).select('+passwordHash');
+  if (!candidate) throw new AppError(409, 'FIRST_APPLICATION_REQUIRED', 'Votre compte sera créé lors de votre première candidature');
   if (req.body.nipcan && candidate?.nipcan !== String(req.body.nipcan).trim().toUpperCase()) throw new AppError(422, 'NIPCAN_MISMATCH', 'Utilisez l’adresse email associée à votre NIPCAN');
   const duplicate = await Candidate.exists({$or: [{username}, {accountPhone: phone}], ...(candidate ? {_id: {$ne: candidate._id}} : {})});
   if (duplicate) throw new AppError(409, 'ACCOUNT_EXISTS', 'Ce téléphone ou cet identifiant est déjà utilisé');
@@ -51,20 +52,29 @@ router.post('/candidate-auth/register', limiter, asyncHandler(async (req, res) =
   try {
     if (candidate) {
       // La preuve de possession de l’email permet également de réinitialiser le mot de passe.
-      candidate.username = username; candidate.accountPhone = phone; candidate.phone = phone; candidate.passwordHash = passwordHash;
+      candidate.mustChangePassword = false; candidate.username = username; candidate.accountPhone = phone; candidate.phone = phone; candidate.passwordHash = passwordHash;
       if (!candidate.nipcan) candidate.nipcan = await nextNipcan();
       account = await candidate.save();
       await Session.updateMany({candidateId: account._id, actorType: 'candidate', revokedAt: null}, {$set: {revokedAt: new Date()}});
     } else account = await Candidate.create({email, username, phone, accountPhone: phone, passwordHash, firstName: String(req.body.firstName).trim(), lastName: String(req.body.lastName).trim(), nipcan: await nextNipcan()});
   } catch (error) {if(error.code === 11000) throw new AppError(409, 'ACCOUNT_EXISTS', 'Ce compte existe déjà. Connectez-vous.'); throw error;}
-  await sessionResponse(res, account);
+  ok(res, await createCandidateSession(account), 'Connexion réussie');
 }));
 router.post('/candidate-auth/login', limiter, asyncHandler(async (req, res) => {
   const identifier = String(req.body.identifier || '').trim().toLowerCase();
   const candidate = await Candidate.findOne({$or: [{email: identifier}, {username: identifier}, {accountPhone: normalizePhone(identifier)}]}).select('+passwordHash');
   if (!candidate?.passwordHash || !await bcrypt.compare(String(req.body.password || ''), candidate.passwordHash)) throw new AppError(401, 'INVALID_CREDENTIALS', 'Identifiant ou mot de passe incorrect');
-  await sessionResponse(res, candidate);
+  ok(res, await createCandidateSession(candidate), 'Connexion réussie');
 }));
-router.get('/candidate-auth/me', authenticateCandidate, (req, res) => ok(res, {nipcan: req.candidate.nipcan}));
+router.get('/candidate-auth/me', authenticateCandidate, (req, res) => ok(res, {nipcan: req.candidate.nipcan, mustChangePassword: !!req.candidate.mustChangePassword}));
 router.post('/candidate-auth/logout', authenticateCandidate, asyncHandler(async (req, res) => {req.candidateSession.revokedAt = new Date(); await req.candidateSession.save(); ok(res, null, 'Déconnexion effectuée');}));
-module.exports = {router, authenticateCandidate, normalizePhone};
+router.put('/candidate-auth/password', limiter, authenticateCandidate, asyncHandler(async (req, res) => {
+  const account = await Candidate.findById(req.candidate._id).select('+passwordHash');
+  const password = String(req.body.password || '');
+  if (!await bcrypt.compare(String(req.body.currentPassword || ''), account.passwordHash || '')) throw new AppError(422, 'INVALID_PASSWORD', 'Mot de passe actuel incorrect');
+  if (password.length < 10 || Buffer.byteLength(password) > 72 || password === req.body.currentPassword) throw new AppError(422, 'INVALID_PASSWORD', 'Choisissez un nouveau mot de passe de 10 caractères minimum (72 octets maximum)');
+  account.passwordHash = await bcrypt.hash(password, 12); account.mustChangePassword = false; await account.save();
+  await Session.updateMany({candidateId: account._id, actorType: 'candidate', _id: {$ne: req.candidateSession._id}, revokedAt: null}, {$set: {revokedAt: new Date()}});
+  ok(res, null, 'Mot de passe modifié');
+}));
+module.exports = {router, authenticateCandidate, normalizePhone, createCandidateSession};

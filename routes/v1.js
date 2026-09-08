@@ -15,13 +15,13 @@ const { authenticate, scopeEstablishment, requirePasswordChanged } = require('..
 const { validateUploadedFiles } = require('../middleware/fileSignature');
 const router = express.Router();
 router.use(require('./catalog-management'));
-const {router: candidateAuthRouter, authenticateCandidate} = require('./candidate-auth');
+const {router: candidateAuthRouter, authenticateCandidate, createCandidateSession} = require('./candidate-auth');
 router.use(candidateAuthRouter);
 router.use(['/candidats/nip/:nip', '/candidats/nipcan/:nipcan/dashboard'], authenticateCandidate, (req, res, next) => {
   if (String(req.params.nip || req.params.nipcan).trim().toUpperCase() !== req.candidate.nipcan) return next(new AppError(403, 'CANDIDATE_FORBIDDEN', 'Ce NIPCAN ne correspond pas à votre compte'));
   next();
 });
-router.post('/candidats', authenticateCandidate);
+router.post('/candidats', (req, res, next) => req.headers['x-candidate-token'] ? authenticateCandidate(req, res, next) : next());
 router.post('/applications', authenticateCandidate, (req, res, next) => {req.body.candidateId = req.candidate._id; req.body.candidate = {firstName: req.candidate.firstName, lastName: req.candidate.lastName, phone: req.candidate.phone}; next();});
 const authenticationLimiter = rateLimit({windowMs:15*60*1000,limit:10,standardHeaders:'draft-7',legacyHeaders:false,message:{success:false,error:{code:'TOO_MANY_AUTH_ATTEMPTS'},message:'Trop de tentatives. Réessayez dans quelques minutes.'}});
 const required = (...paths) => (req, _res, next) => { const missing = paths.filter(path => path.split('.').reduce((v,k) => v?.[k], req.body) == null); missing.length ? next(new AppError(422, 'VALIDATION_ERROR', 'Données invalides', missing.map(field => ({ field, message: 'Champ obligatoire' })))) : next(); };
@@ -190,6 +190,8 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
   const context = requirements.map(item => ({ nom: item.name, description: item.description || '', validation: item.validationInstructions || '', rejet: item.rejectionInstructions || '', modele: item.exampleOriginalName || null }));
   let response;
   try {
+    for (let attempt = 0; ; attempt++) {
+      try {
     response = await axios.post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(env.geminiModel)}:generateContent`, {
       generationConfig: { temperature: 0.2 },
       systemInstruction: { parts: [{ text: `Tu es l’assistant de configuration documentaire de GabConcours. Tu aides un administrateur à définir des règles contrôlables par IA pour le concours "${contest.title}". Explique clairement tes propositions en français. Tu peux proposer des textes pour validation et rejet, mais ne prétends jamais qu’une IA prouve l’authenticité d’un document. Le contrôle automatique vérifie uniquement la lisibilité, le type, la présence d’informations et la conformité aux règles. Documents actuels : ${JSON.stringify(context)}` }] },
@@ -197,10 +199,17 @@ router.post('/admin/ai/chat', authenticate, requirePermission('manage_applicatio
         ...history.filter(item => ['user', 'assistant'].includes(item.role)).map(item => ({ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(item.content || '').slice(0, 4000) }] })),
         { role: 'user', parts: [{ text: message }] }
       ]
-    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 90000 });
+    }, { headers: { 'x-goog-api-key': env.geminiApiKey, 'Content-Type': 'application/json' }, timeout: 25000 });
+        break;
+      } catch (error) {
+        if (![429, 503].includes(error.response?.status) || attempt >= 2) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt));
+      }
+    }
   } catch (error) {
     if (['ECONNABORTED', 'ETIMEDOUT'].includes(error.code)) throw new AppError(504, 'AI_TIMEOUT', 'Gemini met trop de temps à répondre. Veuillez réessayer.');
     const providerStatus = error.response?.status;
+    if (providerStatus === 503) throw new AppError(503, 'AI_BUSY', 'Le modèle IA est temporairement surchargé. Trois tentatives ont échoué. Réessayez dans une minute ; vos consignes sont conservées.');
     const providerCode = error.response?.data?.error?.code || error.code || 'UNKNOWN_PROVIDER_ERROR';
     const providerMessage = error.response?.data?.error?.message || error.message;
     const status = [400, 401, 403].includes(providerStatus) ? 503 : providerStatus === 429 ? 429 : 502;
@@ -391,7 +400,7 @@ router.post('/admin/management/admins/:id/resend-credentials',authenticate,requi
 router.delete('/admin/management/admins/:id',authenticate,requireSuperAdmin,asyncHandler(async(req,res)=>{if(req.admin._id.equals(req.params.id))throw new AppError(409,'SELF_DELETE_FORBIDDEN','Vous ne pouvez pas supprimer votre propre compte');const admin=await Administrator.findByIdAndUpdate(req.params.id,{$set:{active:false}},{new:true});if(!admin)throw new AppError(404,'ADMIN_NOT_FOUND','Administrateur introuvable');ok(res,{id:String(admin._id)},'Administrateur désactivé');}));
 router.get('/support',authenticate,asyncHandler(async(req,res)=>{const page=Math.max(1,Number(req.query.page)||1),limit=Math.min(100,Math.max(1,Number(req.query.limit)||20));const query={};if(req.query.status&&req.query.status!=='all')query.status=req.query.status;if(req.query.search){const q=String(req.query.search).slice(0,100);query.$or=[{subject:{$regex:q,$options:'i'}},{body:{$regex:q,$options:'i'}}];}const [items,total]=await Promise.all([SupportRequest.find(query).populate('candidateId applicationId').sort({createdAt:-1}).skip((page-1)*limit).limit(limit).lean(),SupportRequest.countDocuments(query)]);ok(res,{requests:items.map(s=>({id:String(s._id),legacyId:s.legacyId,name:s.candidateId?`${s.candidateId.firstName} ${s.candidateId.lastName}`.trim():'',email:s.candidateId?.email||'',subject:s.subject,message:s.body,status:s.status,createdAt:s.createdAt,updatedAt:s.updatedAt,nupcan:s.applicationId?.nupcan||''})),page,total,totalPages:Math.max(1,Math.ceil(total/limit))},'Demandes de support chargées');}));
 router.get('/candidats',authenticate,requirePermission('view_applications'),asyncHandler(async(req,res)=>{const scopedIds=await scopedApplicationIds(req.admin);const applicationQuery=scopedIds?{_id:{$in:scopedIds}}:{};const applications=await Application.find(applicationQuery).populate('contestId programId').lean();const candidateIds=[...new Set(applications.map(a=>String(a.candidateId)))];const appIds=applications.map(a=>a._id);const [candidates,documents,payments]=await Promise.all([Candidate.find({_id:{$in:candidateIds}}).populate('originProvinceId currentProvinceId assignedProvinceId').sort({createdAt:-1}).lean(),ApplicationDocument.find({applicationId:{$in:appIds}}).lean(),Payment.find({applicationId:{$in:appIds}}).sort({createdAt:-1}).lean()]);const result=candidates.map(c=>{const apps=applications.filter(a=>String(a.candidateId)===String(c._id));const ownIds=new Set(apps.map(a=>String(a._id))),docs=documents.filter(d=>ownIds.has(String(d.applicationId))),pays=payments.filter(p=>ownIds.has(String(p.applicationId))),latest=apps.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];return{id:String(c._id),legacyId:c.legacyId,nupcan:latest?.nupcan||'',nipcan:c.nipcan||'',nomcan:c.lastName,prncan:c.firstName,maican:c.email||'',telcan:c.phone,dtncan:c.birthDate,province_origine:c.originProvinceId?.name||'',province_actuelle:c.currentProvinceId?.name||'',province_affectation:c.assignedProvinceId?.name||'',participations:apps.map(a=>({id:String(a._id),nupcan:a.nupcan,statut:a.status,concours:a.contestId?.title||'',filiere:a.programId?.name||''})),documents:docs.map(d=>({id:String(d._id),type:d.type,statut:d.status})),paiements:pays.map(p=>({id:String(p._id),montant:p.amount,statut:p.status,reference:p.paymentReference})),paiement:pays[0]?{statut:{paid:'valide',pending:'en_attente',processing:'en_attente',failed:'rejete',cancelled:'rejete'}[pays[0].status]||pays[0].status,montant:pays[0].amount}:null,created_at:c.createdAt,updated_at:c.updatedAt};});ok(res,result,'Candidats et informations liées chargés');}));
-router.post('/candidats', candidatePhotoUpload.single('phtcan'), validateUploadedFiles, required('nomcan','prncan','telcan','concours_id','filiere_id'), asyncHandler(async(req,res)=>{
+router.post('/candidats', authenticationLimiter, candidatePhotoUpload.single('phtcan'), validateUploadedFiles, required('nomcan','prncan','telcan','concours_id','filiere_id'), asyncHandler(async(req,res)=>{
   const [contest,program,originProvince,currentProvince,assignedProvince]=await Promise.all([
     Contest.findOne(contestFilter(req.body.concours_id)).lean(),
     Program.findOne(idFilter(req.body.filiere_id)).lean(),
@@ -403,8 +412,8 @@ router.post('/candidats', candidatePhotoUpload.single('phtcan'), validateUploade
   if(contest.programIds?.length&&!contest.programIds.some(id=>String(id)===String(program._id)))throw new AppError(422,'PROGRAM_NOT_AVAILABLE','Cette filière ne fait pas partie du concours');
   const photoData=req.file?`data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`:undefined;
   const existingCandidate=req.candidate;
-  if(req.body.nipcan && String(req.body.nipcan).trim().toUpperCase() !== existingCandidate.nipcan) throw new AppError(403,'CANDIDATE_FORBIDDEN','Ce NIPCAN ne correspond pas à votre compte');
-  if(req.body.maican && String(req.body.maican).trim().toLowerCase() !== existingCandidate.email) throw new AppError(422,'ACCOUNT_EMAIL_MISMATCH','Utilisez l’adresse email vérifiée de votre compte');
+  if(req.body.nipcan && (!existingCandidate || String(req.body.nipcan).trim().toUpperCase() !== existingCandidate.nipcan)) throw new AppError(403,'CANDIDATE_FORBIDDEN','Ce NIPCAN ne correspond pas à votre compte');
+  if(existingCandidate && req.body.maican && String(req.body.maican).trim().toLowerCase() !== existingCandidate.email) throw new AppError(422,'ACCOUNT_EMAIL_MISMATCH','Utilisez l’adresse email vérifiée de votre compte');
   if(req.body.nipcan&&!existingCandidate)throw new AppError(404,'CANDIDATE_NOT_FOUND','Aucun candidat ne correspond à ce NIPCAN');
   if(existingCandidate){
     const duplicateApplication=await Application.findOne({candidateId:existingCandidate._id,contestId:contest._id}).select('nupcan').lean();
@@ -433,6 +442,9 @@ router.post('/candidats', candidatePhotoUpload.single('phtcan'), validateUploade
     }
   });
   const candidate=existingCandidate||await Candidate.findById(application.candidateId).lean();
+  const accountCredentials = application.$locals.accountCredentials;
+  const accountSession = accountCredentials ? await createCandidateSession(candidate) : null;
+  res.set('Cache-Control', 'no-store');
   let emailSent=false;
   if (candidate.email) {
     try {
@@ -441,14 +453,15 @@ router.post('/candidats', candidatePhotoUpload.single('phtcan'), validateUploade
         nupcan: application.nupcan,
         nomcan: candidate.lastName,
         prncan: candidate.firstName,
-        maican: candidate.email
+        maican: candidate.email,
+        accountCredentials
       }, { libcnc: contest.title, documents_requis: [] });
       emailSent=true;
     } catch (error) {
       console.error(JSON.stringify({level:'error',code:'CANDIDATE_CREDENTIALS_EMAIL_FAILED',candidateId:String(candidate._id),message:error.message}));
     }
   }
-  ok(res,{id:String(application.candidateId),nupcan:application.nupcan,nipcan:candidate.nipcan,concours_id:contest.legacyId||String(contest._id),filiere_id:program.legacyId||String(program._id),nomcan:req.body.nomcan,prncan:req.body.prncan,maican:req.body.maican||'',dtncan:req.body.dtncan||'',telcan:req.body.telcan,ldncan:req.body.ldncan||'',phtcan:candidate.photoData||null,niveau_id:req.body.niveau_id||null,proorg:originProvince?.legacyId||req.body.proorg||null,proact:currentProvince?.legacyId||req.body.proact||null,proaff:assignedProvince?.legacyId||req.body.proaff||null,created_at:application.createdAt,updated_at:application.updatedAt,delivery:{emailSent}},emailSent?'Candidature créée et identifiants envoyés par email':"Candidature créée, mais l'email n'a pas pu être envoyé",201);
+  ok(res,{id:String(application.candidateId),nupcan:application.nupcan,nipcan:candidate.nipcan,concours_id:contest.legacyId||String(contest._id),filiere_id:program.legacyId||String(program._id),nomcan:req.body.nomcan,prncan:req.body.prncan,maican:req.body.maican||'',dtncan:req.body.dtncan||'',telcan:req.body.telcan,ldncan:req.body.ldncan||'',phtcan:candidate.photoData||null,niveau_id:req.body.niveau_id||null,proorg:originProvince?.legacyId||req.body.proorg||null,proact:currentProvince?.legacyId||req.body.proact||null,proaff:assignedProvince?.legacyId||req.body.proaff||null,created_at:application.createdAt,updated_at:application.updatedAt,delivery:{emailSent},...(accountCredentials ? {account: {...accountCredentials, ...accountSession}} : {})},emailSent?'Candidature créée et identifiants envoyés par email':"Candidature créée, mais l'email n'a pas pu être envoyé",201);
 }));
 router.post('/candidats/nipcan/verify', authenticateCandidate, required('nipcan'), asyncHandler(async (req, res) => {
   const nipcan = String(req.body.nipcan).trim().toUpperCase();
