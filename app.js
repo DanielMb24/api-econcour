@@ -34,7 +34,7 @@ function createApp() {
     },
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Requested-With', 'X-Candidate-Token'],
     optionsSuccessStatus: 204,
   };
   app.use(cors(corsOptions));

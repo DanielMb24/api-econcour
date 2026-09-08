@@ -86,3 +86,13 @@ test('une analyse deja reservee ne declenche pas un second appel Gemini', async 
   assert.equal(result.skipped, true);
   assert.equal(state.requests.length, 0);
 });
+
+for (const recommendation of ['approve', 'reject']) {
+  test(`une recommandation ${recommendation} peu certaine exige un contrôle humain`, async () => {
+    const state = setup({candidate: {finishReason: 'STOP', content: {parts: [{text: JSON.stringify({recommendation, confidence: 0.6, reason: 'Document partiellement lisible'})}]}}});
+    await state.analyze('document');
+    assert.equal(state.updates.at(-1).status, 'uploaded');
+    assert.equal(state.updates.at(-1).aiRecommendation, 'review');
+    assert.match(state.requests[0][1].contents[0].parts[0].text, /Evalue explicitement chacune des consignes/);
+  });
+}
