@@ -50,4 +50,19 @@ const DocumentAccessLog = simple('DocumentAccessLog', { documentId: { ...ref('Ap
 const NotificationTemplate = simple('NotificationTemplate', { code: { type: String, required: true, uppercase: true, trim: true }, channel: { type: String, enum: ['in_app','email','sms'], required: true }, locale: { type: String, default: 'fr-GA' }, subject: String, body: { type: String, required: true }, variables: [{ type: String }], active: { type: Boolean, default: true }, version: { type: Number, default: 1, min: 1 } }, [[{ code: 1, channel: 1, locale: 1, version: 1 }, { unique: true }]]);
 const SystemSetting = simple('SystemSetting', { key: { type: String, required: true, trim: true }, value: Schema.Types.Mixed, description: String, sensitive: { type: Boolean, default: false }, updatedBy: ref('Administrator') }, [[{ key: 1 }, { unique: true }]]);
 const MigrationCheckpoint = simple('MigrationCheckpoint', { migration: { type: String, required: true }, entity: { type: String, required: true }, lastLegacyId: Number, batchNumber: { type: Number, min: 0, default: 0 }, status: { type: String, enum: ['pending','running','completed','failed'], default: 'pending' }, counts: { migrated: { type: Number, default: 0 }, skipped: { type: Number, default: 0 }, errors: { type: Number, default: 0 } }, error: String, completedAt: Date }, [[{ migration: 1, entity: 1 }, { unique: true }]]);
-module.exports = { Establishment, Program, Subject, Contest, Administrator, Candidate, Application, ApplicationDocument, Payment, Notification, Message, SupportRequest, AuditLog, Session, Counter, Province, EducationLevel, ContestProgram, ProgramSubject, DocumentRequirement, Grade, PaymentEvent, Receipt, VerificationCode, LoginAttempt, DocumentAccessLog, NotificationTemplate, SystemSetting, MigrationCheckpoint };
+const PushSubscription = simple('PushSubscription', { candidateId: ref('Candidate'), administratorId: ref('Administrator'), endpoint: { type: String, required: true, trim: true }, p256dh: { type: String, required: true }, auth: { type: String, required: true }, userAgent: String, revokedAt: Date }, [[{ endpoint: 1 }, { unique: true }], [{ candidateId: 1, revokedAt: 1 }, {}], [{ administratorId: 1, revokedAt: 1 }, {}]]);
+module.exports = { Establishment, Program, Subject, Contest, Administrator, Candidate, Application, ApplicationDocument, Payment, Notification, Message, SupportRequest, AuditLog, Session, Counter, Province, EducationLevel, ContestProgram, ProgramSubject, DocumentRequirement, Grade, PaymentEvent, Receipt, VerificationCode, LoginAttempt, DocumentAccessLog, NotificationTemplate, SystemSetting, MigrationCheckpoint, PushSubscription };
+
+// Toute notification persistée est aussi poussée vers les appareils abonnés
+// (push web best-effort : un échec n'empêche jamais la création).
+// require paresseux pour éviter tout cycle de dépendance avec les services.
+const dispatchPush = (doc) => {
+  try {
+    const push = require('../../services/pushService');
+    const payload = { title: doc.title || 'GabConcours', body: doc.body || '', nupcan: doc.legacyNupcan || '', url: doc.legacyNupcan ? `/dashboard/candidature/${doc.legacyNupcan}` : '/' };
+    if (doc.candidateId) push.sendToCandidate(doc.candidateId, payload).catch(() => {});
+    if (doc.recipientAdministratorId) push.sendToAdministrator(doc.recipientAdministratorId, payload).catch(() => {});
+  } catch {}
+};
+Notification.schema.post('save', function (doc) { dispatchPush(doc); });
+Notification.schema.post('insertMany', function (docs) { (Array.isArray(docs) ? docs : []).forEach(dispatchPush); });
