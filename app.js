@@ -3,6 +3,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('express-mongo-sanitize');
 const env = require('./config/env');
 const { correlation, notFound, errorHandler } = require('./utils/api');
 function createApp() {
@@ -41,6 +42,9 @@ function createApp() {
   app.options('*', cors(corsOptions));
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false }));
   app.use(express.json({ limit: '1mb', verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); } }), express.urlencoded({ extended: false, limit: '1mb' }), cookieParser());
+  // Anti-injection NoSQL : supprime les clés $ et . des entrées (body/query/params).
+  // Les requêtes Mongo sont construites côté serveur : aucun usage légitime impacté.
+  app.use(mongoSanitize());
   app.use('/api/v1', require('./routes/v1'));
   app.use(notFound, errorHandler); return app;
 }

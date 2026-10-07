@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { Candidate, Contest, Program, Application, Counter } = require('../models/mongo');
 const { AppError } = require('../utils/api');
+const { normalizePhone, phoneVariants } = require('../utils/phone');
 async function nextNupcan(now = new Date()) {
   const year = now.getUTCFullYear();
   const counter = await Counter.findByIdAndUpdate(`nupcan:${year}`, { $inc: { seq: 1 } }, { new: true, upsert: true, setDefaultsOnInsert: true });
@@ -25,9 +26,10 @@ async function createApplication(input) {
   if (!input.candidateId) {
     const nipcan = await nextNipcan();
     const temporaryPassword = crypto.randomBytes(15).toString('base64url');
-    const phone = String(input.candidate.phone || '').replace(/[\s().-]/g, '').replace(/^00/, '+');
+    const phone = normalizePhone(input.candidate.phone);
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^\+?\d{8,15}$/.test(phone)) throw new AppError(422, 'INVALID_CONTACT', 'Email et téléphone valides requis');
-    if (await Candidate.exists({accountPhone: phone})) throw new AppError(409, 'ACCOUNT_EXISTS', 'Ce téléphone est déjà associé à un compte. Connectez-vous.');
+    // Anti-doublon téléphone : bloque aussi les variantes d'écriture (+ / 00 / espaces).
+    if (await Candidate.exists({accountPhone: {$in: phoneVariants(phone)}})) throw new AppError(409, 'ACCOUNT_EXISTS', 'Ce téléphone est déjà associé à un compte. Connectez-vous.');
     input.candidate = {...input.candidate, nipcan, username: nipcan.toLowerCase(), phone, accountPhone: phone, passwordHash: await bcrypt.hash(temporaryPassword, 12), mustChangePassword: true};
     accountCredentials = {username: nipcan.toLowerCase(), temporaryPassword};
   }
